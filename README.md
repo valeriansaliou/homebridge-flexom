@@ -6,7 +6,7 @@ This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
 ## Features
 
-- Flexom Zones (i.e. rooms) appear in HomeKit as light and window covering accessories, with one accessory per roller shutter or venetian blind.
+- Flexom Zones (i.e. rooms) appear in HomeKit as light and window covering accessories, with one accessory per light, roller shutter or venetian blind.
 - Venetian blinds: closing fully also closes the slats (dark room); any other position opens them, to see outside.
 - Changes made outside HomeKit (wall switches, Flexom app) are reflected live through the Flexom WebSocket, and every zone is periodically refreshed from the Flexom API in case an event was missed.
 - Recovers on its own from network drops and Flexom API outages, without restarting Homebridge.
@@ -20,7 +20,7 @@ This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
 ## Install
 
-- Build the `tgz` archive locally
+- Build the plugin archive locally: `npm run build && npm pack`
 - Copy it to your Homebridge server in `/tmp`
 - Enter `hb-shell`
 - Run: `npm install /tmp/[archive_name].tgz`
