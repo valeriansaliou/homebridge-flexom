@@ -5,7 +5,13 @@ import type {
   PlatformConfig,
 } from 'homebridge';
 
-import { belongsToZone, createFlexomZone } from './accessories/flexomZone';
+import {
+  belongsToZone,
+  createFlexomZone,
+  loadZoneData,
+  type ZoneAccessoryContext,
+} from './accessories/flexomZone';
+import { canRemoveAccessory, findMissingRoles } from './accessories/roles';
 import { markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
@@ -31,6 +37,16 @@ export type FlexomPlatformConfig = PlatformConfig & {
 };
 
 const DEFAULT_REFRESH_INTERVAL = 15 * 60; /* s */
+const DEFAULT_TOLERANCE = 0.05;
+// Setup attempts (about 10 min with the retry backoff) before accepting that
+// Flexom no longer reports something HomeKit knows about
+const MAX_INCOMPLETE_ATTEMPTS = 6;
+
+function getTolerance(tolerance: unknown) {
+  return typeof tolerance === 'number' && tolerance >= 0 && tolerance <= 1
+    ? tolerance
+    : DEFAULT_TOLERANCE;
+}
 
 export function createFlexomPlatform({
   logger,
@@ -54,16 +70,43 @@ export function createFlexomPlatform({
     accessories.delete(accessory.UUID);
   };
 
+  const getRoles = (accessory: PlatformAccessory) =>
+    (accessory.context as ZoneAccessoryContext).roles;
+
   const setupZone = async ({
     zone,
     client,
+    attempt,
   }: {
     zone: Flexom.Zone;
     client: Flexom.FlexomClient;
+    attempt: number;
   }) => {
     const exclusion = config.excludeZones
       ? config.excludedZones?.find(({ id }) => id === zone.id)
       : undefined;
+    const exclusions = { light: exclusion?.light, window: exclusion?.window };
+    const data = await loadZoneData({ flexom: client, zone, exclusions });
+
+    // Flexom sometimes answers with partial data: wait for it to report
+    // everything HomeKit knows about, before changing any accessory
+    const zoneAccessories = [...accessories.values()].filter((accessory) =>
+      belongsToZone(api, accessory, zone),
+    );
+    const missingRoles = findMissingRoles({
+      knownRoles: zoneAccessories.flatMap((a) => getRoles(a) ?? []),
+      reportedRoles: data.roles,
+      exclusions,
+    });
+    if (missingRoles.length && attempt < MAX_INCOMPLETE_ATTEMPTS) {
+      const missingAccessories = zoneAccessories.filter((accessory) =>
+        getRoles(accessory)?.some((role) => missingRoles.includes(role)),
+      );
+      throw new Error(
+        `Flexom did not report ${missingAccessories.map((a) => a.displayName).join(', ')}`,
+      );
+    }
+
     const flexomZone = await createFlexomZone({
       api,
       getAccessory: ({ uuid, name }) =>
@@ -72,17 +115,29 @@ export function createFlexomPlatform({
       logger,
       zone,
       flexom: client,
-      tolerance: config.tolerance,
-      exclusions: { light: exclusion?.light, window: exclusion?.window },
+      tolerance: getTolerance(config.tolerance),
+      data,
     });
 
     const used = new Set(flexomZone?.accessories);
-    [...accessories.values()]
-      .filter(
-        (accessory) =>
-          belongsToZone(api, accessory, zone) && !used.has(accessory),
-      )
-      .forEach(unregister);
+    for (const accessory of zoneAccessories.filter((a) => !used.has(a))) {
+      if (
+        canRemoveAccessory({
+          roles: getRoles(accessory),
+          reportedRoles: data.roles,
+          exclusions,
+        })
+      ) {
+        unregister(accessory);
+      } else {
+        logger.warn(
+          `${accessory.displayName} is no longer reported by Flexom: kept in ` +
+            'HomeKit, showing "No response". If the device was removed, ' +
+            'remove this accessory from the Homebridge UI (Settings > ' +
+            'Remove Single Cached Accessory).',
+        );
+      }
+    }
 
     for (const accessory of used) {
       if (accessories.has(accessory.UUID)) {
@@ -101,27 +156,52 @@ export function createFlexomPlatform({
 
   const discoverZones = async (client: Flexom.FlexomClient) => {
     const retryOptions = { logger, signal: shutdown.signal };
-    const zones = await retryUntilSuccess(() => client.getZones(), {
-      ...retryOptions,
-      description: 'list Flexom zones',
-    });
+    let attempt = 0;
+    const zones = await retryUntilSuccess(
+      async () => {
+        const result = await client.getZones();
+        attempt += 1;
+        if (
+          result.length === 0 &&
+          accessories.size > 0 &&
+          attempt < MAX_INCOMPLETE_ATTEMPTS
+        ) {
+          throw new Error('Flexom reported no zones');
+        }
+        return result;
+      },
+      {
+        ...retryOptions,
+        description: 'list Flexom zones',
+      },
+    );
     logger.info(`Found ${zones.length} zones`);
 
+    // Accessories of zones Flexom no longer reports are kept: removing them
+    // would lose their rooms, scenes and automations on a mere API glitch
     [...accessories.values()]
       .filter(
         (accessory) =>
           !zones.some((zone) => belongsToZone(api, accessory, zone)),
       )
-      .forEach(unregister);
+      .forEach((accessory) => {
+        logger.warn(
+          `${accessory.displayName} belongs to a zone no longer reported by ` +
+            'Flexom: kept in HomeKit, showing "No response". If the zone was ' +
+            'removed, remove this accessory from the Homebridge UI (Settings ' +
+            '> Remove Single Cached Accessory).',
+        );
+      });
 
     // Zones are retried independently, so one failing zone does not block others
     const results = await Promise.all(
-      zones.map((zone) =>
-        retryUntilSuccess(() => setupZone({ zone, client }), {
-          ...retryOptions,
-          description: `set up zone ${zone.name}`,
-        }),
-      ),
+      zones.map((zone) => {
+        let zoneAttempt = 0;
+        return retryUntilSuccess(
+          () => setupZone({ zone, client, attempt: (zoneAttempt += 1) }),
+          { ...retryOptions, description: `set up zone ${zone.name}` },
+        );
+      }),
     );
     const tasks = results.filter((task): task is RefreshTask => !!task);
     logger.info(`Setup ${tasks.length} zones`);

@@ -13,6 +13,7 @@ import {
   ZONE_BLIND,
   type Blind,
 } from './blinds';
+import { getBlindRole, LIGHT_ROLE, type Exclusions, type Role } from './roles';
 
 // Delays before sending a command, so only the last value is sent. Lights
 // only merge quick toggles. The Home app sends window covering positions
@@ -41,7 +42,7 @@ export type GetAccessory = (params: {
 }) => PlatformAccessory;
 
 /** Accessory context, persisted by Homebridge in its accessory cache */
-export type ZoneAccessoryContext = { zoneId?: string };
+export type ZoneAccessoryContext = { zoneId?: string; roles?: Role[] };
 
 /** UUIDs a zone's accessories had before window coverings were per blind */
 export function getZoneAccessoryUuids(api: API, zone: Flexom.Zone) {
@@ -66,33 +67,26 @@ export function belongsToZone(
   );
 }
 
-export async function createFlexomZone({
-  api,
-  getAccessory,
-  separateAccessories,
-  exclusions = {},
+/** What Flexom reports for a zone, before building any accessory */
+export type ZoneData = {
+  settings: Flexom.ZoneSettings;
+  blindActuators: Flexom.Actuator[];
+  isLightEnabled: boolean;
+  blinds: Blind[];
+  /** Controls the zone exposes; empty when it has none (e.g. "Ma Maison") */
+  roles: Role[];
+};
+
+export async function loadZoneData({
   flexom,
   zone,
-  tolerance,
-  logger: parentLogger,
+  exclusions = {},
 }: {
-  api: API;
-  /** Returns the cached accessory with this UUID, or a new one */
-  getAccessory: GetAccessory;
-  /** One accessory for the light and one per window covering */
-  separateAccessories: boolean;
-  exclusions: Partial<{
-    light: boolean;
-    window: boolean;
-  }>;
   flexom: Flexom.FlexomClient;
   zone: Flexom.Zone;
-  logger: Logger;
-  tolerance: number;
-}): Promise<FlexomZone | undefined> {
-  const logger = createChildLogger({ parentLogger, prefix: zone.name });
-
-  let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
+  exclusions?: Exclusions;
+}): Promise<ZoneData> {
+  const settings = await flexom.getZoneSettings(zone);
   const isLightEnabled = !!settings.BRI && !exclusions.light;
 
   // The zone window covering value mixes positions and slat orientations:
@@ -107,6 +101,44 @@ export async function createFlexomZone({
     blinds = toBlinds(blindActuators);
     if (blinds.length === 0) blinds = [ZONE_BLIND];
   }
+
+  return {
+    settings,
+    blindActuators,
+    isLightEnabled,
+    blinds,
+    roles: [
+      ...(isLightEnabled ? [LIGHT_ROLE] : []),
+      ...blinds.map(getBlindRole),
+    ],
+  };
+}
+
+export async function createFlexomZone({
+  api,
+  getAccessory,
+  separateAccessories,
+  data,
+  flexom,
+  zone,
+  tolerance,
+  logger: parentLogger,
+}: {
+  api: API;
+  /** Returns the cached accessory with this UUID, or a new one */
+  getAccessory: GetAccessory;
+  /** One accessory for the light and one per window covering */
+  separateAccessories: boolean;
+  /** From loadZoneData */
+  data: ZoneData;
+  flexom: Flexom.FlexomClient;
+  zone: Flexom.Zone;
+  logger: Logger;
+  tolerance: number;
+}): Promise<FlexomZone | undefined> {
+  const logger = createChildLogger({ parentLogger, prefix: zone.name });
+  const { isLightEnabled, blinds } = data;
+  let { settings, blindActuators } = data;
 
   if (!isLightEnabled && blinds.length === 0) {
     return undefined;
@@ -156,6 +188,12 @@ export async function createFlexomZone({
   });
 
   for (const accessory of used.values()) {
+    (accessory.context as ZoneAccessoryContext).roles = [
+      ...(accessory === lightAccessory ? [LIGHT_ROLE] : []),
+      ...blindSetups
+        .filter((setup) => setup.accessory === accessory)
+        .map(({ blind }) => getBlindRole(blind)),
+    ];
     accessory
       .getService(api.hap.Service.AccessoryInformation)
       ?.setCharacteristic(api.hap.Characteristic.Manufacturer, 'Flexom')

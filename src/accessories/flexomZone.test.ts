@@ -8,7 +8,11 @@ import {
   hap,
 } from '../test/homebridge';
 import type { PlatformAccessory } from 'homebridge';
-import { createFlexomZone, type GetAccessory } from './flexomZone';
+import {
+  createFlexomZone,
+  loadZoneData,
+  type GetAccessory,
+} from './flexomZone';
 
 const zone = { id: 'zone-1', name: 'Kitchen' };
 
@@ -94,7 +98,7 @@ async function setup(
     zone,
     flexom: fake.flexom,
     tolerance: 0.05,
-    exclusions: {},
+    data: await loadZoneData({ flexom: fake.flexom, zone }),
   });
   // Let the initial (debounced) state fetch settle
   await vi.advanceTimersByTimeAsync(2000);
@@ -137,7 +141,7 @@ describe('createFlexomZone', () => {
         zone,
         flexom: fake.flexom,
         tolerance: 0.05,
-        exclusions: {},
+        data: await loadZoneData({ flexom: fake.flexom, zone }),
       }),
     ).resolves.toBeUndefined();
   });
@@ -697,6 +701,37 @@ describe('createFlexomZone', () => {
       expect(logger.debug).toHaveBeenCalledWith(
         'State in sync with API: window covering 1 local=50% remote=50%, window covering 2 local=100% remote=100%',
       );
+    });
+  });
+
+  describe('roles', () => {
+    it('records what each accessory controls', async () => {
+      const { flexomZone } = await setup(
+        { BRI: { value: 0 }, BRIEXT: { value: 0.5 } },
+        {
+          actuators: [
+            { itId: 'io:1', actuatorId: '1_C0', hardwareState: { value: 1 } },
+            { itId: 'io:2', actuatorId: '2_C0', hardwareState: { value: 1 } },
+          ],
+        },
+      );
+
+      expect(flexomZone.accessories.map((a) => a.context)).toEqual([
+        { zoneId: zone.id, roles: ['light'] },
+        { zoneId: zone.id, roles: ['window:io:1'] },
+        { zoneId: zone.id, roles: ['window:io:2'] },
+      ]);
+    });
+
+    it('records all roles of a grouped accessory', async () => {
+      const { flexomZone } = await setup(
+        { BRI: { value: 0 }, BRIEXT: { value: 0.5 } },
+        { separateAccessories: false },
+      );
+
+      expect(flexomZone.accessories.map((a) => a.context)).toEqual([
+        { zoneId: zone.id, roles: ['light', 'window'] },
+      ]);
     });
   });
 });

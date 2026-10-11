@@ -18,6 +18,12 @@
 - Window coverings stay in sync with HomeKit: the target is kept while moving,
   the movement state follows position updates, moves from wall switches are
   followed, and a shutter stopping slightly off target shows the target.
+- Accessories are no longer removed from HomeKit (losing their rooms, scenes
+  and automations) when Flexom temporarily reports incomplete data: setup is
+  retried, and accessories Flexom stops reporting are kept, showing "No
+  response". Only configuration changes remove accessories.
+- A missing or invalid `tolerance` setting defaults to 0.05, instead of
+  breaking window coverings.
 - Error logs now include the error message and HTTP status.
 - Failed commands no longer cause unhandled promise rejections.
 

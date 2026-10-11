@@ -52,5 +52,6 @@ describe('formatDuration', () => {
   it('formats seconds and minutes', () => {
     expect(formatDuration(10_000)).toBe('10s');
     expect(formatDuration(15 * 60_000)).toBe('15 min');
+    expect(formatDuration(80_000)).toBe('1 min 20s');
   });
 });

@@ -26,7 +26,10 @@ export function debounce<Args extends unknown[]>(
 }
 
 export function formatDuration(ms: number) {
-  return ms >= 60_000 ? `${ms / 60_000} min` : `${ms / 1000}s`;
+  const seconds = Math.round(ms / 1000);
+  const minutes = Math.floor(seconds / 60);
+  if (minutes === 0) return `${seconds}s`;
+  return seconds % 60 ? `${minutes} min ${seconds % 60}s` : `${minutes} min`;
 }
 
 function serializeError(err: Error & { code?: unknown; status?: unknown }) {
