@@ -38,6 +38,17 @@
         "maximum": 1,
         "description": "Tolerance on factor update between target and actual value (ratio between 0 and 1, default 0.02). Some devices do not always reach requested target value, mainly window devices. For instance, it may be considered closed by Flexom at 0.01 instead of 0."
       },
+      "refreshInterval": {
+        "title": "State refresh interval (minutes)",
+        "type": "number",
+        "default": 5,
+        "minimum": 0,
+        "maximum": 60,
+        "description": "How often to fetch every zone's state from Flexom, to fix HomeKit when a change was missed (e.g. a light switched on with a wall switch but not reported). Zones are refreshed one at a time across the interval. Set to 0 to disable.",
+        "condition": {
+          "functionBody": "return model.zones === true;"
+        }
+      },
       "excludeZones": {
         "title": "Exclude some zones",
         "type": "boolean",

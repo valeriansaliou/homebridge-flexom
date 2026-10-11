@@ -9,6 +9,7 @@ import type {
 import { createFlexomZone } from './accessories/flexomZone';
 import { markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
+import { startPeriodicRefresh, type RefreshTask } from './refresh';
 import { retryUntilSuccess } from './retry';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
 import { toLogJson } from './utils';
@@ -18,6 +19,8 @@ export type FlexomPlatformConfig = PlatformConfig & {
   password: string;
   zones: boolean;
   tolerance: number;
+  /** Minutes between state refreshes from the API, 0 to disable */
+  refreshInterval?: number;
   excludeZones: boolean;
   excludedZones: {
     id: string;
@@ -26,6 +29,8 @@ export type FlexomPlatformConfig = PlatformConfig & {
   }[];
   things: boolean;
 };
+
+const DEFAULT_REFRESH_INTERVAL = 5; /* min */
 
 export function createFlexomPlatform({
   logger,
@@ -39,6 +44,7 @@ export function createFlexomPlatform({
   const accessories = new Map<string, PlatformAccessory>();
   const shutdown = new AbortController();
   let flexom: Flexom.FlexomClient | undefined;
+  let stopRefresh = () => {};
 
   const unregister = (accessory: PlatformAccessory) => {
     logger.info(
@@ -60,7 +66,7 @@ export function createFlexomPlatform({
     const accessory =
       existingAccessory ?? new api.platformAccessory(zone.name, uuid);
 
-    const hasZoneControls = await createFlexomZone({
+    const flexomZone = await createFlexomZone({
       api,
       accessory,
       logger,
@@ -75,9 +81,9 @@ export function createFlexomPlatform({
         : {},
     });
 
-    if (!hasZoneControls) {
+    if (!flexomZone) {
       if (existingAccessory) unregister(existingAccessory);
-      return false;
+      return undefined;
     }
     if (existingAccessory) {
       logger.info(`Update accessory: ${zone.name}`);
@@ -87,7 +93,7 @@ export function createFlexomPlatform({
       api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
       accessories.set(uuid, accessory);
     }
-    return true;
+    return { name: zone.name, refresh: flexomZone.refresh };
   };
 
   const discoverZones = async (client: Flexom.FlexomClient) => {
@@ -114,7 +120,9 @@ export function createFlexomPlatform({
         }),
       ),
     );
-    logger.info(`Setup ${results.filter(Boolean).length} zones`);
+    const tasks = results.filter((task): task is RefreshTask => !!task);
+    logger.info(`Setup ${tasks.length} zones`);
+    return tasks;
   };
 
   const init = async () => {
@@ -134,7 +142,18 @@ export function createFlexomPlatform({
       password: config.password,
       logger,
     });
-    await discoverZones(flexom);
+    const tasks = await discoverZones(flexom);
+
+    const refreshInterval = config.refreshInterval ?? DEFAULT_REFRESH_INTERVAL;
+    if (shutdown.signal.aborted) return;
+    stopRefresh = startPeriodicRefresh({
+      tasks,
+      interval: refreshInterval * 60_000,
+      logger,
+    });
+    if (refreshInterval > 0) {
+      logger.info(`Refreshing zone states every ${refreshInterval} min`);
+    }
   };
 
   logger.debug(`Finished initializing platform: ${config.name}`);
@@ -148,6 +167,7 @@ export function createFlexomPlatform({
 
   api.on('shutdown', () => {
     shutdown.abort();
+    stopRefresh();
     void flexom?.disconnect();
   });
 
