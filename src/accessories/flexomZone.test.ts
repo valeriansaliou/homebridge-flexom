@@ -142,24 +142,21 @@ describe('createFlexomZone', () => {
       expect(infoLines()).toHaveLength(before);
     });
 
-    it('does not revert a command that was just sent', async () => {
-      const { flexomZone, client, characteristic } = await setup({
+    it('does not revert a light command that was just sent', async () => {
+      const { flexomZone, characteristic } = await setup({
         BRI: { value: 0 },
       });
       const on = characteristic(hap.Service.Lightbulb, hap.Characteristic.On);
-      client.getZoneSettings.mockClear();
 
       // HomeKit switches the light on; the API does not reflect it yet
       on.setValue(true);
       await vi.advanceTimersByTimeAsync(1000);
       await flexomZone.refresh();
       expect(on.value).toBe(true);
-      expect(client.getZoneSettings).not.toHaveBeenCalled();
 
       // Once the command has settled, the API is trusted again
       await vi.advanceTimersByTimeAsync(15_000);
       await flexomZone.refresh();
-      expect(client.getZoneSettings).toHaveBeenCalled();
       expect(on.value).toBe(false);
     });
 
@@ -272,6 +269,100 @@ describe('createFlexomZone', () => {
       await vi.advanceTimersByTimeAsync(1000);
 
       expect(zoneSetup.logger.error).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('window covering', () => {
+    const { CurrentPosition, TargetPosition, PositionState } =
+      hap.Characteristic;
+
+    const setupShutter = async (position: number) => {
+      const zoneSetup = await setup({ BRIEXT: { value: position } });
+      const read = () => {
+        const get = (type: typeof CurrentPosition) =>
+          zoneSetup.characteristic(hap.Service.WindowCovering, type).value;
+        return {
+          current: get(CurrentPosition),
+          target: get(TargetPosition),
+          state: get(PositionState),
+        };
+      };
+      const setTarget = (target: number) =>
+        zoneSetup
+          .characteristic(hap.Service.WindowCovering, TargetPosition)
+          .setValue(target);
+      return { ...zoneSetup, read, setTarget };
+    };
+
+    it('sends only the final value of a slider drag, quickly', async () => {
+      const { client, setTarget, read } = await setupShutter(1);
+
+      for (const target of [80, 60, 40]) {
+        setTarget(target);
+        await vi.advanceTimersByTimeAsync(100);
+      }
+      expect(read()).toEqual({
+        current: 100,
+        target: 40,
+        state: PositionState.DECREASING,
+      });
+      await vi.advanceTimersByTimeAsync(200);
+
+      expect(client.setZoneFactor).toHaveBeenCalledTimes(1);
+      expect(client.setZoneFactor).toHaveBeenCalledWith({
+        id: zone.id,
+        factor: 'BRIEXT',
+        value: 0.4,
+      });
+    });
+
+    it('stays in sync while moving to the target', async () => {
+      const { sendEvent, setTarget, read, flexomZone, setApiState, logger } =
+        await setupShutter(1);
+      setTarget(40);
+      await vi.advanceTimersByTimeAsync(500);
+
+      sendEvent('BRIEXT', 0.85);
+      await vi.advanceTimersByTimeAsync(2000);
+      sendEvent('BRIEXT', 0.62);
+      expect(read()).toEqual({
+        current: 62,
+        target: 40,
+        state: PositionState.DECREASING,
+      });
+
+      // A periodic refresh mid-way neither interferes nor logs a correction
+      setApiState({ BRIEXT: { value: 0.55 } });
+      await flexomZone.refresh();
+      expect(read().target).toBe(40);
+      expect(logger.info).not.toHaveBeenCalledWith(
+        expect.stringContaining('corrected'),
+      );
+
+      sendEvent('BRIEXT', 0.41);
+      expect(read()).toEqual({
+        current: 40,
+        target: 40,
+        state: PositionState.STOPPED,
+      });
+    });
+
+    it('follows a shutter moved with a wall switch', async () => {
+      const { sendEvent, read } = await setupShutter(0);
+
+      sendEvent('BRIEXT', 0.3);
+      expect(read()).toEqual({
+        current: 30,
+        target: 30,
+        state: PositionState.INCREASING,
+      });
+      sendEvent('BRIEXT', 0.7);
+      await vi.advanceTimersByTimeAsync(5000);
+      expect(read()).toEqual({
+        current: 70,
+        target: 70,
+        state: PositionState.STOPPED,
+      });
     });
   });
 });

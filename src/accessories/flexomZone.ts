@@ -8,8 +8,11 @@ import {
 } from '../services/windowCovering';
 import { createChildLogger, toLogJson } from '../utils';
 
-const DEBOUNCE_DELAY = 1000; /* ms */
-// Refreshing right after a command could revert HomeKit to the previous state
+// Short enough to feel instant, long enough to only send the final value
+// while a HomeKit slider is being dragged
+const COMMAND_DELAY = 300; /* ms */
+// Refreshing right after a light command could revert HomeKit to the
+// previous state (window coverings track their pending target instead)
 const COMMAND_SETTLE_DELAY = 15_000; /* ms */
 
 /** Flexom factor (0-1, sometimes slightly off) to a HomeKit position (0-100) */
@@ -63,7 +66,7 @@ export async function createFlexomZone({
       } catch (err: unknown) {
         logger.error(`Failed to set ${factor} to ${value}: ${toLogJson(err)}`);
       }
-    }, DEBOUNCE_DELAY);
+    }, COMMAND_DELAY);
   const updateZoneBRI = createZoneFactorUpdater('BRI');
   const updateZoneBRIEXT = createZoneFactorUpdater('BRIEXT');
 
@@ -74,9 +77,9 @@ export async function createFlexomZone({
     return undefined;
   }
 
-  let lastCommandAt = 0;
-  const isCommandSettling = () =>
-    Date.now() - lastCommandAt < COMMAND_SETTLE_DELAY;
+  let lastLightCommandAt = 0;
+  const isLightCommandSettling = () =>
+    Date.now() - lastLightCommandAt < COMMAND_SETTLE_DELAY;
 
   let lightBulb: LightBulb;
   if (isLightEnabled) {
@@ -88,7 +91,7 @@ export async function createFlexomZone({
       name: zone.name,
       initialState: (settings.BRI?.value ?? 0) > 0,
       setState: async (isOn: boolean) => {
-        lastCommandAt = Date.now();
+        lastLightCommandAt = Date.now();
         await updateZoneBRI(isOn ? 1 : 0);
       },
     });
@@ -109,9 +112,8 @@ export async function createFlexomZone({
       name: zone.name,
       tolerance: tolerance * 100,
       initialPosition: toPosition(settings.BRIEXT?.value ?? 0),
-      setState: async (value: number) => {
-        lastCommandAt = Date.now();
-        await updateZoneBRIEXT(value / 100);
+      sendTarget: (target: number) => {
+        void updateZoneBRIEXT(target / 100);
       },
     });
   } else {
@@ -121,7 +123,6 @@ export async function createFlexomZone({
     }
   }
 
-  const { STOPPED } = api.hap.Characteristic.PositionState;
   const applyFactor = (
     factor: Flexom.Factor,
     factorValue: number,
@@ -129,7 +130,7 @@ export async function createFlexomZone({
   ) => {
     switch (factor) {
       case 'BRI': {
-        if (!lightBulb) return;
+        if (!lightBulb || (isRefresh && isLightCommandSettling())) return;
         const wasOn = lightBulb.lightOnService.getValue();
         const isOn = factorValue > 0;
         if (isRefresh && wasOn !== isOn) {
@@ -142,17 +143,17 @@ export async function createFlexomZone({
       }
       case 'BRIEXT': {
         if (!windowCovering) return;
-        const positionState = windowCovering.positionStateService.getValue();
-        const previous = windowCovering.currentPositionService.getValue();
-        const value = toPosition(factorValue);
-        if (isRefresh && Math.abs(previous - value) > tolerance * 100) {
+        const previous = windowCovering.getPosition();
+        const wasMoving = windowCovering.isMoving();
+        windowCovering.reportPosition(
+          toPosition(factorValue),
+          isRefresh ? 'refresh' : 'event',
+        );
+        const current = windowCovering.getPosition();
+        if (isRefresh && !wasMoving && current !== previous) {
           logger.info(
-            `Window covering corrected from ${previous}% to ${value}% (missed event)`,
+            `Window covering corrected from ${previous}% to ${current}% (missed event)`,
           );
-        }
-        windowCovering.currentPositionService.setInternalValue(value);
-        if (positionState === STOPPED) {
-          windowCovering.targetPositionService.setInternalValue(value);
         }
         break;
       }
@@ -161,15 +162,8 @@ export async function createFlexomZone({
   };
 
   const refresh = async () => {
-    if (isCommandSettling()) {
-      logger.debug('Skipping refresh: command in progress');
-      return;
-    }
     logger.debug('Refreshing state from API');
-    const latestSettings = await flexom.getZoneSettings(zone);
-    // A command may have been sent while the request was in flight
-    if (isCommandSettling()) return;
-    settings = latestSettings;
+    settings = await flexom.getZoneSettings(zone);
     for (const factor of ['BRI', 'BRIEXT'] as const) {
       const factorSettings = settings[factor];
       if (factorSettings) {

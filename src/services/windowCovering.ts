@@ -1,16 +1,14 @@
 import type {
-  Characteristic,
-  PlatformAccessory,
-  Logger,
   API,
+  CharacteristicValue,
+  Logger,
+  PlatformAccessory,
 } from 'homebridge';
 import { createChildLogger } from '../utils';
-import { bindService } from './helpers';
-
-type PositionState =
-  | typeof Characteristic.PositionState.INCREASING
-  | typeof Characteristic.PositionState.DECREASING
-  | typeof Characteristic.PositionState.STOPPED;
+import {
+  createWindowCoveringController,
+  type Movement,
+} from './windowCoveringController';
 
 export type WindowCovering = ReturnType<typeof createWindowCovering>;
 
@@ -20,72 +18,73 @@ export function createWindowCovering({
   name,
   tolerance,
   initialPosition,
-  setState,
+  sendTarget,
   logger: parentLogger,
 }: {
   api: API;
   accessory: PlatformAccessory;
   name: string;
+  /** Positions this close (0-100 scale) are considered equal */
   tolerance: number;
   initialPosition: number;
-  setState: (targetPosition: number) => Promise<void>;
+  sendTarget: (target: number) => void;
   logger: Logger;
 }) {
   const logger = createChildLogger({ parentLogger, prefix: 'WindowCovering' });
+  const { Characteristic } = api.hap;
   const service =
     accessory.getService(api.hap.Service.WindowCovering) ||
     accessory.addService(api.hap.Service.WindowCovering);
-  service.setCharacteristic(api.hap.Characteristic.Name, name);
+  service.setCharacteristic(Characteristic.Name, name);
 
-  const currentPositionService = bindService<number>({
-    hap: api.hap,
-    service,
-    characteristic: api.hap.Characteristic.CurrentPosition,
-    initialValue: initialPosition,
-    logger,
-  });
-
-  const targetPositionService = bindService<number>({
-    hap: api.hap,
-    service,
-    characteristic: api.hap.Characteristic.TargetPosition,
-    initialValue: initialPosition,
-    setState,
-    logger,
-  });
-
-  const { STOPPED, INCREASING, DECREASING } =
-    api.hap.Characteristic.PositionState;
-
-  const getPositionState = (): PositionState => {
-    const currentPosition = currentPositionService.getValue();
-    const targetPosition = targetPositionService.getValue();
-    logger.debug(
-      'homekit get position state ' +
-        `(current: ${currentPosition} / target: ${targetPosition})`,
-    );
-    if (Math.abs(currentPosition - targetPosition) < tolerance) {
-      return STOPPED;
-    }
-    if (currentPosition < targetPosition) {
-      return INCREASING;
-    }
-    return DECREASING;
+  const toPositionState: Record<Movement, number> = {
+    increasing: Characteristic.PositionState.INCREASING,
+    decreasing: Characteristic.PositionState.DECREASING,
+    stopped: Characteristic.PositionState.STOPPED,
   };
 
-  const positionStateService = bindService<PositionState>({
-    hap: api.hap,
-    service,
-    characteristic: api.hap.Characteristic.PositionState,
-    initialValue: STOPPED,
-    getState: getPositionState,
-    logger,
-    dependencies: [currentPositionService, targetPositionService],
+  const controller = createWindowCoveringController({
+    initialPosition,
+    tolerance,
+    sendTarget,
+    onChange: ({ current, target, movement }) => {
+      logger.debug(`current ${current}, target ${target}, ${movement}`);
+      service
+        .updateCharacteristic(Characteristic.CurrentPosition, current)
+        .updateCharacteristic(Characteristic.TargetPosition, target)
+        .updateCharacteristic(
+          Characteristic.PositionState,
+          toPositionState[movement],
+        );
+    },
   });
 
+  const { current, target, movement } = controller.getState();
+  service
+    .updateCharacteristic(Characteristic.CurrentPosition, current)
+    .updateCharacteristic(Characteristic.TargetPosition, target)
+    .updateCharacteristic(
+      Characteristic.PositionState,
+      toPositionState[movement],
+    );
+
+  service
+    .getCharacteristic(Characteristic.CurrentPosition)
+    .onGet(() => controller.getState().current);
+  service
+    .getCharacteristic(Characteristic.PositionState)
+    .onGet(() => toPositionState[controller.getState().movement]);
+  service
+    .getCharacteristic(Characteristic.TargetPosition)
+    .onGet(() => controller.getState().target)
+    .onSet((value: CharacteristicValue) => {
+      logger.debug(`homekit set target ${JSON.stringify(value)}`);
+      controller.setTarget(value as number);
+    });
+
   return {
-    currentPositionService,
-    targetPositionService,
-    positionStateService,
+    getPosition: () => controller.getState().current,
+    isMoving: controller.isMoving,
+    reportPosition: controller.reportPosition,
   };
 }
