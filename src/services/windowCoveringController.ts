@@ -2,8 +2,9 @@
 // without a report means it stopped (reached its end, or stopped by hand)
 const SETTLE_DELAY = 5_000; /* ms */
 // A command that moved nothing (already there, or ignored) within this delay
-// is given up on, so HomeKit does not wait for a target that will never come
-const START_TIMEOUT = 10_000; /* ms */
+// is given up on, so HomeKit does not wait for a target that will never come.
+// Includes the 3s the command waits for a slider drag to end before it is sent.
+const START_TIMEOUT = 13_000; /* ms */
 
 export type Movement = 'increasing' | 'decreasing' | 'stopped';
 

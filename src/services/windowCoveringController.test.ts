@@ -102,7 +102,9 @@ describe('createWindowCoveringController', () => {
       const { controller, state } = setup(50);
       controller.setTarget(90);
 
-      vi.advanceTimersByTime(10_000);
+      vi.advanceTimersByTime(12_999);
+      expect(state().movement).toBe('increasing');
+      vi.advanceTimersByTime(1);
       expect(state()).toEqual({ current: 50, target: 50, movement: 'stopped' });
     });
 

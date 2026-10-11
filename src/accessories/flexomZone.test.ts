@@ -279,7 +279,7 @@ describe('createFlexomZone', () => {
         hap.Service.WindowCovering,
         hap.Characteristic.TargetPosition,
       ).setValue(37);
-      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(3000);
 
       expect(client.setZoneFactor).toHaveBeenCalledWith({
         id: zone.id,
@@ -348,19 +348,22 @@ describe('createFlexomZone', () => {
       return { ...zoneSetup, read, setTarget };
     };
 
-    it('sends only the final value of a slider drag, quickly', async () => {
+    it('sends only the final value of a slider drag, even with pauses', async () => {
       const { client, setTarget, read } = await setupShutter(1);
 
+      // The Home app sends values whenever the drag pauses, not only on release
       for (const target of [80, 60, 40]) {
         setTarget(target);
-        await vi.advanceTimersByTimeAsync(100);
+        await vi.advanceTimersByTimeAsync(2000);
       }
+      // HomeKit shows the new target right away
       expect(read()).toEqual({
         current: 100,
         target: 40,
         state: PositionState.DECREASING,
       });
-      await vi.advanceTimersByTimeAsync(200);
+      expect(client.setZoneFactor).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1000);
 
       expect(client.setZoneFactor).toHaveBeenCalledTimes(1);
       expect(client.setZoneFactor).toHaveBeenCalledWith({

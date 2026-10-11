@@ -7,9 +7,11 @@ import {
 } from '../services/windowCovering';
 import { createChildLogger, debounce, toLogJson } from '../utils';
 
-// Short enough to feel instant, long enough to only send the final value
-// while a HomeKit slider is being dragged
-const COMMAND_DELAY = 300; /* ms */
+// Delays before sending a command, so only the last value is sent. Lights
+// only merge quick toggles. The Home app sends window covering positions
+// whenever a slider drag pauses, before it is released: wait them out.
+const LIGHT_COMMAND_DELAY = 300; /* ms */
+const WINDOW_COMMAND_DELAY = 3000; /* ms */
 // Refreshing right after a light command could revert HomeKit to the
 // previous state (window coverings track their pending target instead)
 const COMMAND_SETTLE_DELAY = 15_000; /* ms */
@@ -68,7 +70,7 @@ export async function createFlexomZone({
 
   let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
 
-  const createZoneFactorUpdater = (factor: Flexom.Factor) =>
+  const createZoneFactorUpdater = (factor: Flexom.Factor, delay: number) =>
     debounce((value: number) => {
       logger.debug(`flexom request setZoneFactor ${factor} ${value}`);
       flexom
@@ -78,9 +80,12 @@ export async function createFlexomZone({
             `Failed to set ${factor} to ${value}: ${toLogJson(err)}`,
           );
         });
-    }, COMMAND_DELAY);
-  const updateZoneBRI = createZoneFactorUpdater('BRI');
-  const updateZoneBRIEXT = createZoneFactorUpdater('BRIEXT');
+    }, delay);
+  const updateZoneBRI = createZoneFactorUpdater('BRI', LIGHT_COMMAND_DELAY);
+  const updateZoneBRIEXT = createZoneFactorUpdater(
+    'BRIEXT',
+    WINDOW_COMMAND_DELAY,
+  );
 
   const isLightEnabled = settings.BRI && !exclusions.light;
   const isWindowEnabled = settings.BRIEXT && !exclusions.window;

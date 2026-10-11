@@ -27,8 +27,9 @@
   commands or answering HomeKit reads, sparing Raspberry Pi SD cards. Details
   are logged with Homebridge debug mode (`-D`).
 - HomeKit reads are answered from memory instead of polling the Flexom API.
-- Commands are sent after 300 ms instead of 1 s; dragging a slider still sends
-  only the final value.
+- Commands are only sent once changes stop: after 300 ms for lights, and 3 s
+  for window coverings, as the Home app sends positions whenever a slider drag
+  pauses. HomeKit shows the new target immediately.
 - Built-in Flexom client replaces `@rsauget/flexom-lib`: no more global
   `WebSocket` override, and `@stomp/stompjs` is the only runtime dependency.
 
