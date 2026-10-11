@@ -1,6 +1,7 @@
 /**
- * What an accessory controls: `light`, `window` (all window coverings of a
- * zone, driven together) or `window:<device id>` (one window covering).
+ * What an accessory controls: `light` and `window` (all lights or window
+ * coverings of a zone, driven together), or `light:<device id>` and
+ * `window:<device id>` (one light or window covering).
  * Stored in the accessory context, so a later startup can tell whether
  * Flexom stopped reporting something HomeKit knows about.
  */
@@ -8,14 +9,38 @@ export type Role = string;
 
 export const LIGHT_ROLE: Role = 'light';
 
+export function getLightRole({ itId }: { itId?: string }): Role {
+  return itId ? `${LIGHT_ROLE}:${itId}` : LIGHT_ROLE;
+}
+
 export function getBlindRole({ itId }: { itId?: string }): Role {
   return itId ? `window:${itId}` : 'window';
+}
+
+/** `light` or `window`, whether zone-wide or for one device */
+function getKind(role: Role) {
+  return role.split(':')[0];
 }
 
 export type Exclusions = Partial<{ light: boolean; window: boolean }>;
 
 function isExcluded(role: Role, exclusions: Exclusions) {
-  return role === LIGHT_ROLE ? !!exclusions.light : !!exclusions.window;
+  return getKind(role) === LIGHT_ROLE
+    ? !!exclusions.light
+    : !!exclusions.window;
+}
+
+/**
+ * Whether Flexom reports a role. A zone-wide role (from before devices were
+ * told apart) is reported by any device of its kind: the zone now has
+ * several, not none.
+ */
+function isReported(role: Role, reportedRoles: Role[]) {
+  if (reportedRoles.includes(role)) return true;
+  return (
+    getKind(role) === role &&
+    reportedRoles.some((reported) => getKind(reported) === role)
+  );
 }
 
 /**
@@ -32,7 +57,7 @@ export function findMissingRoles({
   exclusions: Exclusions;
 }): Role[] {
   return [...new Set(knownRoles)].filter(
-    (role) => !reportedRoles.includes(role) && !isExcluded(role, exclusions),
+    (role) => !isReported(role, reportedRoles) && !isExcluded(role, exclusions),
   );
 }
 
@@ -54,6 +79,6 @@ export function canRemoveAccessory({
 }) {
   if (!roles) return true;
   return roles.every(
-    (role) => reportedRoles.includes(role) || isExcluded(role, exclusions),
+    (role) => isReported(role, reportedRoles) || isExcluded(role, exclusions),
   );
 }

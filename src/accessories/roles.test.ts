@@ -3,11 +3,14 @@ import {
   canRemoveAccessory,
   findMissingRoles,
   getBlindRole,
+  getLightRole,
   LIGHT_ROLE,
 } from './roles';
 
 const blind1 = getBlindRole({ itId: 'io:1' });
 const blind2 = getBlindRole({ itId: 'io:2' });
+const light1 = getLightRole({ itId: 'light-1' });
+const light2 = getLightRole({ itId: 'light-2' });
 
 describe('findMissingRoles', () => {
   it('finds roles Flexom stopped reporting', () => {
@@ -30,10 +33,30 @@ describe('findMissingRoles', () => {
     ).toEqual([blind1, blind2]);
   });
 
+  it('treats lights told apart as reporting the zone light', () => {
+    expect(
+      findMissingRoles({
+        knownRoles: [LIGHT_ROLE],
+        reportedRoles: [light1, light2],
+        exclusions: {},
+      }),
+    ).toEqual([]);
+  });
+
+  it('treats a fallback to the zone light as missing lights', () => {
+    expect(
+      findMissingRoles({
+        knownRoles: [light1, light2],
+        reportedRoles: [LIGHT_ROLE],
+        exclusions: {},
+      }),
+    ).toEqual([light1, light2]);
+  });
+
   it('ignores roles excluded by the configuration', () => {
     expect(
       findMissingRoles({
-        knownRoles: [LIGHT_ROLE, blind1],
+        knownRoles: [LIGHT_ROLE, light1, blind1],
         reportedRoles: [],
         exclusions: { light: true, window: true },
       }),
@@ -58,6 +81,16 @@ describe('canRemoveAccessory', () => {
         roles: [blind1],
         reportedRoles: [LIGHT_ROLE],
         exclusions: { window: true },
+      }),
+    ).toBe(true);
+  });
+
+  it('removes a zone light accessory now split into several lights', () => {
+    expect(
+      canRemoveAccessory({
+        roles: [LIGHT_ROLE],
+        reportedRoles: [light1, light2],
+        exclusions: {},
       }),
     ).toBe(true);
   });

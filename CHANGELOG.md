@@ -52,6 +52,11 @@
   position and slat orientation (e.g. 50% when fully open).
 - Venetian blinds: closing fully from HomeKit also closes the slats (dark
   room); any other position opens them.
+- Zones with several lights (each with its own wall switch) now expose one
+  HomeKit light per device ("Bathroom Light 1", "Bathroom Light 2"), each
+  switched and read on its own, instead of a single light switching them all.
+  The first light keeps the existing accessory; zones with a single light are
+  unchanged.
 
 - Periodic state refresh from the Flexom API (default every 15 minutes,
   configurable in seconds, 0 to disable) to fix missed events, e.g. a light

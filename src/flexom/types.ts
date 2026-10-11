@@ -76,6 +76,8 @@ export type Actuator = {
   itId: string;
   actuatorId: string;
   actionningRepresentation?: ActuationRepresentation;
+  /** Factors the actuator acts on, e.g. BRI for a light */
+  factors?: Factor[];
   /** Actual state reported by the device */
   hardwareState?: { value: number | null } | null;
 };

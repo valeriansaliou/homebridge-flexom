@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EventListener } from '../flexom/types';
-import type { Actuator, FlexomClient, ZoneSettings } from '../flexom';
+import type { Actuator, Factor, FlexomClient, ZoneSettings } from '../flexom';
 import {
   createTestAccessory,
   createTestApi,
@@ -26,7 +26,12 @@ function createFakeFlexom(
   const client = {
     getZoneSettings: vi.fn(() => Promise.resolve(settings)),
     setZoneFactor: vi.fn(() => Promise.resolve()),
-    getFactorActuators: vi.fn(() => Promise.resolve(actuators)),
+    // Like Flexom: each factor lists its own actuators (blinds by default)
+    getFactorActuators: vi.fn(({ factor }: { factor: Factor }) =>
+      Promise.resolve(
+        actuators.filter((a) => (a.factors ?? ['BRIEXT']).includes(factor)),
+      ),
+    ),
     setActuatorState: vi.fn<
       (params: {
         itId: string;
@@ -53,7 +58,7 @@ function createFakeFlexom(
     sendEvent: (
       factorId: 'BRI' | 'BRIEXT',
       value: number,
-      actuator?: { itId: string; actuatorId: string },
+      actuator?: { itId?: string; actuatorId: string },
     ) =>
       listeners.forEach((l) =>
         l.listener({
@@ -701,6 +706,150 @@ describe('createFlexomZone', () => {
       expect(logger.debug).toHaveBeenCalledWith(
         'State in sync with API: window covering 1 local=50% remote=50%, window covering 2 local=100% remote=100%',
       );
+    });
+  });
+
+  describe('lights', () => {
+    // A zone with two lights, each with its own wall switch
+    const light = (id: string, value: number): Actuator => ({
+      itId: `it:${id}`,
+      actuatorId: `${id}_C0`,
+      factors: ['BRI'],
+      hardwareState: { value },
+    });
+    const { On } = hap.Characteristic;
+    // The zone value covers every light of the zone
+    const zoneSettings = { BRI: { value: 1, actuatorCount: 2 } };
+
+    const setupLights = (
+      actuators: Actuator[],
+      options: {
+        separateAccessories?: boolean;
+        cached?: PlatformAccessory[];
+      } = {},
+    ) => setup(zoneSettings, { actuators, ...options });
+
+    const lightServices = (accessories: PlatformAccessory[]) =>
+      accessories.flatMap((accessory) =>
+        accessory.services.filter(
+          (service) => service.UUID === hap.Service.Lightbulb.UUID,
+        ),
+      );
+    const states = (accessories: PlatformAccessory[]) =>
+      lightServices(accessories).map((s) => s.getCharacteristic(On).value);
+
+    it('exposes one accessory per light, in its actual state', async () => {
+      const { flexomZone } = await setupLights([
+        light('42', 0),
+        light('17', 1),
+      ]);
+
+      expect(
+        flexomZone.accessories.map((a) => [a.displayName, a.UUID]),
+      ).toEqual([
+        // The first light keeps the zone light accessory, and its setup
+        ['Kitchen Light 1', hap.uuid.generate(zone.id)],
+        ['Kitchen Light 2', hap.uuid.generate(`${zone.id}:light:it:42`)],
+      ]);
+      expect(states(flexomZone.accessories)).toEqual([true, false]);
+    });
+
+    it('keeps the zone light for a single light, without listing it', async () => {
+      const { flexomZone, client } = await setup({
+        BRI: { value: 1, actuatorCount: 1 },
+      });
+
+      expect(
+        flexomZone.accessories.map((a) => [a.displayName, a.UUID]),
+      ).toEqual([['Kitchen Light', hap.uuid.generate(zone.id)]]);
+      expect(client.getFactorActuators).not.toHaveBeenCalled();
+
+      const [service] = lightServices(flexomZone.accessories);
+      service.getCharacteristic(On).setValue(false);
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(client.setZoneFactor).toHaveBeenCalledWith({
+        id: zone.id,
+        factor: 'BRI',
+        value: 0,
+      });
+    });
+
+    it('groups lights as separate services when grouping accessories', async () => {
+      const cached = createTestAccessory('Kitchen', hap.uuid.generate(zone.id));
+      cached.addService(hap.Service.Lightbulb); // from the zone light
+
+      const { flexomZone } = await setupLights(
+        [light('42', 0), light('17', 1)],
+        {
+          separateAccessories: false,
+          cached: [cached],
+        },
+      );
+
+      expect(flexomZone.accessories).toEqual([cached]);
+      const services = lightServices(flexomZone.accessories);
+      expect(services.map((s) => s.subtype)).toEqual([undefined, 'it:42']);
+      expect(
+        services.map((s) => s.getCharacteristic(hap.Characteristic.Name).value),
+      ).toEqual(['Kitchen Light 1', 'Kitchen Light 2']);
+    });
+
+    it('switches each light on its own', async () => {
+      const { flexomZone, client } = await setupLights([
+        light('42', 0),
+        light('17', 0),
+      ]);
+      const [, second] = lightServices(flexomZone.accessories);
+
+      second.getCharacteristic(On).setValue(true);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(client.setActuatorState.mock.calls).toEqual([
+        [{ itId: 'it:42', actuatorId: '42_C0', value: 1 }],
+      ]);
+      expect(client.setZoneFactor).not.toHaveBeenCalled();
+    });
+
+    it('follows events of each light', async () => {
+      const { flexomZone, sendEvent } = await setupLights([
+        light('42', 0),
+        light('17', 0),
+      ]);
+
+      sendEvent('BRI', 1, { itId: 'it:42', actuatorId: '42_C0' });
+      expect(states(flexomZone.accessories)).toEqual([false, true]);
+
+      // Events without a device id are matched by actuator
+      sendEvent('BRI', 1, { actuatorId: '17_C0' });
+      sendEvent('BRI', 0, { itId: 'it:42', actuatorId: '42_C0' });
+      expect(states(flexomZone.accessories)).toEqual([true, false]);
+    });
+
+    it('refreshes actual states, not the zone value', async () => {
+      const { flexomZone, setApiActuators, logger } = await setupLights([
+        light('42', 0),
+        light('17', 1),
+      ]);
+
+      setApiActuators([light('42', 1), light('17', 1)]);
+      await flexomZone.refresh();
+
+      expect(states(flexomZone.accessories)).toEqual([true, true]);
+      expect(logger.info).toHaveBeenCalledWith(
+        'Light 2 corrected from off to on (missed event)',
+      );
+    });
+
+    it('records a role per light', async () => {
+      const { flexomZone } = await setupLights([
+        light('42', 0),
+        light('17', 1),
+      ]);
+
+      expect(flexomZone.accessories.map((a) => a.context)).toEqual([
+        { zoneId: zone.id, roles: ['light:it:17'] },
+        { zoneId: zone.id, roles: ['light:it:42'] },
+      ]);
     });
   });
 
