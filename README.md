@@ -2,7 +2,7 @@
 
 This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
-⚠️  *T*his is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebridge-flexom) containing improvements for venetian blinds, WebSocket connectivity, and other fixes.**
+⚠️  **This is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebridge-flexom) containing improvements for venetian blinds, WebSocket connectivity, and other fixes.**
 
 ## Features
 
