@@ -15,6 +15,7 @@ export type WindowCovering = ReturnType<typeof createWindowCovering>;
 export function createWindowCovering({
   api,
   accessory,
+  subtype,
   name,
   tolerance,
   initialPosition,
@@ -23,6 +24,8 @@ export function createWindowCovering({
 }: {
   api: API;
   accessory: PlatformAccessory;
+  /** Tells apart several window coverings of a single accessory */
+  subtype?: string;
   name: string;
   /** Positions this close (0-100 scale) are considered equal */
   tolerance: number;
@@ -32,9 +35,11 @@ export function createWindowCovering({
 }) {
   const logger = createChildLogger({ parentLogger, prefix: 'WindowCovering' });
   const { Characteristic } = api.hap;
-  const service =
-    accessory.getService(api.hap.Service.WindowCovering) ||
-    accessory.addService(api.hap.Service.WindowCovering);
+  const service = subtype
+    ? (accessory.getServiceById(api.hap.Service.WindowCovering, subtype) ??
+      accessory.addService(api.hap.Service.WindowCovering, name, subtype))
+    : (accessory.getService(api.hap.Service.WindowCovering) ??
+      accessory.addService(api.hap.Service.WindowCovering));
   service.setCharacteristic(Characteristic.Name, name);
 
   const toPositionState: Record<Movement, number> = {

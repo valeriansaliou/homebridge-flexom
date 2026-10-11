@@ -35,10 +35,17 @@
 
 ### Added
 
-- Each zone's light and window covering are now separate HomeKit accessories
-  (e.g. "Lounge Light" and "Lounge Shutter"), so each can have its own name and
-  room. Existing accessories are kept for lights; window coverings get new
-  accessories. Set `separateAccessories` to `false` to keep them grouped.
+- Each zone's light and each of its window coverings are now separate HomeKit
+  accessories (e.g. "Lounge Light", "Lounge Shutter 1", "Lounge Shutter 2"),
+  so each can have its own name and room. Existing accessories are kept for
+  lights and for zones with a single window covering. Set
+  `separateAccessories` to `false` to keep them grouped.
+- Window coverings are driven and read per device instead of per zone: each
+  blind of a zone can be moved on its own, and positions come from the
+  device's position motor. Venetian blinds used to show the average of their
+  position and slat orientation (e.g. 50% when fully open).
+- Venetian blinds: closing fully from HomeKit also closes the slats (dark
+  room); any other position opens them.
 
 - Periodic state refresh from the Flexom API (default every 15 minutes,
   configurable in seconds, 0 to disable) to fix missed events, e.g. a light

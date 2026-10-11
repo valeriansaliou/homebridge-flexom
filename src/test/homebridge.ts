@@ -13,7 +13,10 @@ export function createTestAccessory(
   name: string,
   uuid = hap.uuid.generate(name),
 ) {
-  return new hap.Accessory(name, uuid) as unknown as PlatformAccessory;
+  // PlatformAccessory adds a persisted context to HAP accessories
+  return Object.assign(new hap.Accessory(name, uuid), {
+    context: {},
+  }) as unknown as PlatformAccessory;
 }
 
 export function createTestLogger() {

@@ -25,6 +25,8 @@ export type HttpRequest = {
   method?: 'GET' | 'POST' | 'PUT';
   path: string;
   body?: Record<string, string | number>;
+  /** Overrides the client's body encoding */
+  encoding?: 'json' | 'form';
 };
 
 export function createHttpClient({
@@ -36,14 +38,19 @@ export function createHttpClient({
   getHeaders: () => Record<string, string>;
   encoding: 'json' | 'form';
 }) {
-  return async <T>({ method = 'GET', path, body }: HttpRequest): Promise<T> => {
+  return async <T>({
+    method = 'GET',
+    path,
+    body,
+    encoding: requestEncoding = encoding,
+  }: HttpRequest): Promise<T> => {
     const headers: Record<string, string> = {
       Accept: 'application/json',
       ...getHeaders(),
     };
     let payload: string | undefined;
     if (body) {
-      if (encoding === 'json') {
+      if (requestEncoding === 'json') {
         headers['Content-Type'] = 'application/json';
         payload = JSON.stringify(body);
       } else {

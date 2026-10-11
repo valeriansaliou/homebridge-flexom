@@ -1,6 +1,7 @@
-// A shutter moving on its own reports positions every few seconds: this long
-// without a report means it stopped (reached its end, or stopped by hand)
-const SETTLE_DELAY = 5_000; /* ms */
+// A moving shutter reports its position every 10-20s (observed on Somfy IO
+// blinds): this long without a report means it stopped (reached its end, or
+// stopped by hand)
+const SETTLE_DELAY = 30_000; /* ms */
 // A command that moved nothing (already there, or ignored) within this delay
 // is given up on, so HomeKit does not wait for a target that will never come.
 // Includes the 3s the command waits for a slider drag to end before it is sent.

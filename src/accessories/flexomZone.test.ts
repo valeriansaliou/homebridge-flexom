@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { EventListener } from '../flexom/types';
-import type { FlexomClient, ZoneSettings } from '../flexom';
+import type { Actuator, FlexomClient, ZoneSettings } from '../flexom';
 import {
   createTestAccessory,
   createTestApi,
@@ -12,12 +12,24 @@ import { createFlexomZone, type GetAccessory } from './flexomZone';
 
 const zone = { id: 'zone-1', name: 'Kitchen' };
 
-function createFakeFlexom(initialSettings: ZoneSettings) {
+function createFakeFlexom(
+  initialSettings: ZoneSettings,
+  initialActuators: Actuator[] = [],
+) {
   let settings = initialSettings;
+  let actuators = initialActuators;
   const listeners: EventListener[] = [];
   const client = {
     getZoneSettings: vi.fn(() => Promise.resolve(settings)),
     setZoneFactor: vi.fn(() => Promise.resolve()),
+    getFactorActuators: vi.fn(() => Promise.resolve(actuators)),
+    setActuatorState: vi.fn<
+      (params: {
+        itId: string;
+        actuatorId: string;
+        value: number;
+      }) => Promise<void>
+    >(() => Promise.resolve()),
     subscribe: vi.fn((listener: EventListener) => {
       listeners.push(listener);
       return Promise.resolve();
@@ -30,15 +42,23 @@ function createFakeFlexom(initialSettings: ZoneSettings) {
     setApiState: (newSettings: ZoneSettings) => {
       settings = newSettings;
     },
+    setApiActuators: (newActuators: Actuator[]) => {
+      actuators = newActuators;
+    },
     reconnect: () => listeners.forEach((l) => l.onReconnect?.()),
-    sendEvent: (factorId: 'BRI' | 'BRIEXT', value: number) =>
+    sendEvent: (
+      factorId: 'BRI' | 'BRIEXT',
+      value: number,
+      actuator?: { itId: string; actuatorId: string },
+    ) =>
       listeners.forEach((l) =>
         l.listener({
           type: 'ACTUATOR_HARDWARE_STATE',
           timestamp: Date.now(),
           zoneId: zone.id,
+          itId: actuator?.itId,
           factorId,
-          value: { value },
+          value: { value, actuatorId: actuator?.actuatorId },
         }),
       ),
   };
@@ -49,9 +69,14 @@ async function setup(
   {
     separateAccessories = true,
     cached = [],
-  }: { separateAccessories?: boolean; cached?: PlatformAccessory[] } = {},
+    actuators = [],
+  }: {
+    separateAccessories?: boolean;
+    cached?: PlatformAccessory[];
+    actuators?: Actuator[];
+  } = {},
 ) {
-  const fake = createFakeFlexom(settings);
+  const fake = createFakeFlexom(settings, actuators);
   const logger = createTestLogger();
   const hapWarnings = vi.fn();
   // Like the platform: cached accessories, or a new one on every call
@@ -414,7 +439,7 @@ describe('createFlexomZone', () => {
         state: PositionState.INCREASING,
       });
       sendEvent('BRIEXT', 0.7);
-      await vi.advanceTimersByTimeAsync(5000);
+      await vi.advanceTimersByTimeAsync(30_000);
       expect(read()).toEqual({
         current: 70,
         target: 70,
@@ -501,6 +526,177 @@ describe('createFlexomZone', () => {
       expect(describeAccessories(flexomZone.accessories)).toMatchObject([
         { uuid: windowUuid, name: 'Kitchen Shutter' },
       ]);
+    });
+  });
+
+  describe('blinds', () => {
+    // Two venetian blinds, as listed by Flexom: position (roller) and slats
+    const blind = (id: string, position: number, slats: number) => [
+      {
+        itId: `io:${id}`,
+        actuatorId: `${id}_C0`,
+        actionningRepresentation: 'VERTICAL_ROLLER',
+        hardwareState: { value: position },
+      },
+      {
+        itId: `io:${id}`,
+        actuatorId: `${id}_C1`,
+        actionningRepresentation: 'HORIZONTAL_SLATS',
+        hardwareState: { value: slats },
+      },
+    ];
+    const { CurrentPosition, TargetPosition } = hap.Characteristic;
+    // The zone value averages positions and slats: never a position
+    const zoneSettings = { BRIEXT: { value: 0.5 } };
+
+    const setupBlinds = (
+      actuators: Actuator[],
+      options: { separateAccessories?: boolean } = {},
+    ) => setup(zoneSettings, { actuators, ...options });
+
+    const windowServices = (accessories: PlatformAccessory[]) =>
+      accessories.flatMap((accessory) =>
+        accessory.services.filter(
+          (service) => service.UUID === hap.Service.WindowCovering.UUID,
+        ),
+      );
+    const positions = (accessories: PlatformAccessory[]) =>
+      windowServices(accessories).map((service) => ({
+        current: service.getCharacteristic(CurrentPosition).value,
+        target: service.getCharacteristic(TargetPosition).value,
+      }));
+
+    it('exposes one accessory per blind, at its actual position', async () => {
+      const { flexomZone } = await setupBlinds([
+        ...blind('42', 1, 0),
+        ...blind('17', 0.25, 1),
+      ]);
+
+      expect(
+        flexomZone.accessories.map((a) => [a.displayName, a.UUID]),
+      ).toEqual([
+        ['Kitchen Shutter 1', hap.uuid.generate(`${zone.id}:window:io:17`)],
+        ['Kitchen Shutter 2', hap.uuid.generate(`${zone.id}:window:io:42`)],
+      ]);
+      expect(positions(flexomZone.accessories)).toEqual([
+        { current: 25, target: 25 },
+        { current: 100, target: 100 },
+      ]);
+    });
+
+    it('keeps the existing accessory for a single blind', async () => {
+      const { flexomZone } = await setupBlinds(blind('42', 1, 0));
+
+      expect(
+        flexomZone.accessories.map((a) => [a.displayName, a.UUID]),
+      ).toEqual([['Kitchen Shutter', hap.uuid.generate(`${zone.id}:window`)]]);
+    });
+
+    it('groups blinds as separate services when grouping accessories', async () => {
+      const cached = createTestAccessory('Kitchen', hap.uuid.generate(zone.id));
+      cached.addService(hap.Service.WindowCovering); // from a single blind
+
+      const { flexomZone } = await setup(zoneSettings, {
+        actuators: [...blind('42', 1, 0), ...blind('17', 0.25, 1)],
+        separateAccessories: false,
+        cached: [cached],
+      });
+
+      expect(flexomZone.accessories).toEqual([cached]);
+      expect(
+        windowServices(flexomZone.accessories).map((s) => s.subtype),
+      ).toEqual(['io:17', 'io:42']);
+    });
+
+    it('closes the slats only when fully closing', async () => {
+      const { flexomZone, client } = await setupBlinds([
+        ...blind('42', 1, 0),
+        ...blind('17', 1, 0),
+      ]);
+      const [first, second] = windowServices(flexomZone.accessories);
+
+      first.getCharacteristic(TargetPosition).setValue(0);
+      second.getCharacteristic(TargetPosition).setValue(50);
+      await vi.advanceTimersByTimeAsync(3000);
+
+      // Each blind: position first, then slats
+      const callsOf = (itId: string) =>
+        client.setActuatorState.mock.calls
+          .map(([call]) => call)
+          .filter((call) => call.itId === itId);
+      expect(callsOf('io:17')).toEqual([
+        { itId: 'io:17', actuatorId: '17_C0', value: 0 },
+        { itId: 'io:17', actuatorId: '17_C1', value: 1 },
+      ]);
+      expect(callsOf('io:42')).toEqual([
+        { itId: 'io:42', actuatorId: '42_C0', value: 0.5 },
+        { itId: 'io:42', actuatorId: '42_C1', value: 0 },
+      ]);
+      expect(client.setZoneFactor).not.toHaveBeenCalled();
+    });
+
+    it('only moves the position of roller shutters', async () => {
+      const { flexomZone, client } = await setupBlinds([
+        {
+          itId: 'io:9',
+          actuatorId: '9_C0',
+          actionningRepresentation: 'VERTICAL_ROLLER',
+          hardwareState: { value: 1 },
+        },
+      ]);
+
+      windowServices(flexomZone.accessories)[0]
+        .getCharacteristic(TargetPosition)
+        .setValue(0);
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(client.setActuatorState.mock.calls).toEqual([
+        [{ itId: 'io:9', actuatorId: '9_C0', value: 0 }],
+      ]);
+    });
+
+    it('follows position events of each blind, ignoring slats', async () => {
+      const { flexomZone, sendEvent } = await setupBlinds([
+        ...blind('42', 1, 0),
+        ...blind('17', 1, 0),
+      ]);
+
+      sendEvent('BRIEXT', 0.4, { itId: 'io:42', actuatorId: '42_C0' });
+      sendEvent('BRIEXT', 1, { itId: 'io:42', actuatorId: '42_C1' });
+      sendEvent('BRIEXT', 0, { itId: 'io:17', actuatorId: '17_C1' });
+
+      expect(positions(flexomZone.accessories)).toEqual([
+        { current: 100, target: 100 },
+        { current: 40, target: 40 },
+      ]);
+    });
+
+    it('refreshes actual positions, not the zone value', async () => {
+      const { flexomZone, setApiActuators, logger } = await setupBlinds([
+        ...blind('42', 1, 0),
+      ]);
+
+      setApiActuators(blind('42', 0, 1));
+      await flexomZone.refresh();
+
+      expect(positions(flexomZone.accessories)).toEqual([
+        { current: 0, target: 0 },
+      ]);
+      expect(logger.info).toHaveBeenCalledWith(
+        'Window covering corrected from 100% to 0% (missed event)',
+      );
+    });
+
+    it('logs blinds by number when in sync', async () => {
+      const { flexomZone, logger } = await setupBlinds([
+        ...blind('42', 1, 0),
+        ...blind('17', 0.5, 0),
+      ]);
+
+      await flexomZone.refresh();
+      expect(logger.debug).toHaveBeenCalledWith(
+        'State in sync with API: window covering 1 local=50% remote=50%, window covering 2 local=100% remote=100%',
+      );
     });
   });
 });

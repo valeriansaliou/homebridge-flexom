@@ -92,7 +92,7 @@ describe('createWindowCoveringController', () => {
       controller.setTarget(80);
       controller.reportPosition(30, 'event');
 
-      vi.advanceTimersByTime(4999);
+      vi.advanceTimersByTime(29_999);
       expect(state().movement).toBe('increasing');
       vi.advanceTimersByTime(1);
       expect(state()).toEqual({ current: 30, target: 30, movement: 'stopped' });
@@ -113,7 +113,7 @@ describe('createWindowCoveringController', () => {
       controller.setTarget(100);
       controller.reportPosition(20, 'event');
 
-      vi.advanceTimersByTime(4000);
+      vi.advanceTimersByTime(29_000);
       controller.reportPosition(40, 'refresh');
       expect(state()).toEqual({
         current: 40,
@@ -147,7 +147,7 @@ describe('createWindowCoveringController', () => {
       controller.reportPosition(60, 'event');
       expect(state().current).toBe(60);
 
-      vi.advanceTimersByTime(5000);
+      vi.advanceTimersByTime(30_000);
       expect(state()).toEqual({ current: 60, target: 60, movement: 'stopped' });
     });
 

@@ -140,6 +140,17 @@ function mockFlexomApi({
         ]);
       case 'PUT /api/WS_ReactiveEnvironmentDataManagement/zone-1/settings/BRIEXT/value':
         return new Response('');
+      case 'GET /api/WS_ReactiveEnvironmentDataManagement/zone-1/BRIEXT/actuators':
+        return json([
+          {
+            itId: 'io:%%1002%42',
+            actuatorId: '42_C0',
+            actionningRepresentation: 'VERTICAL_ROLLER',
+            hardwareState: { value: 0.5 },
+          },
+        ]);
+      case 'PUT /api/intelligent-things/io%3A%25%251002%2542/actuator/42_C0/state':
+        return new Response(null, { status: 204 });
       default:
         return new Response('not found', { status: 404 });
     }
@@ -225,6 +236,38 @@ describe('Flexom client', () => {
       route:
         'PUT /api/WS_ReactiveEnvironmentDataManagement/zone-1/settings/BRIEXT/value',
       body: 'value=0.5',
+    });
+  });
+
+  it('lists the actuators of a zone factor', async () => {
+    mockFlexomApi();
+    const flexom = createClient(credentials);
+
+    await expect(
+      flexom.getFactorActuators({ zoneId: 'zone-1', factor: 'BRIEXT' }),
+    ).resolves.toEqual([
+      {
+        itId: 'io:%%1002%42',
+        actuatorId: '42_C0',
+        actionningRepresentation: 'VERTICAL_ROLLER',
+        hardwareState: { value: 0.5 },
+      },
+    ]);
+  });
+
+  it('sets an actuator state with a JSON PUT', async () => {
+    const api = mockFlexomApi();
+    const flexom = createClient(credentials);
+
+    await flexom.setActuatorState({
+      itId: 'io:%%1002%42',
+      actuatorId: '42_C0',
+      value: 0.25,
+    });
+    expect(api.calls.at(-1)).toMatchObject({
+      url: 'https://hemis.example/api/intelligent-things/io%3A%25%251002%2542/actuator/42_C0/state',
+      body: '{"value":0.25}',
+      headers: { 'Content-Type': 'application/json' },
     });
   });
 

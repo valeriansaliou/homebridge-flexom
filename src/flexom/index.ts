@@ -6,6 +6,7 @@ export {
 } from './client';
 export { FlexomHttpError } from './http';
 export type {
+  Actuator,
   ActuatorHardwareStateEvent,
   Factor,
   HemisEvent,

@@ -33,7 +33,7 @@
         "title": "Separate light and shutter accessories",
         "type": "boolean",
         "default": true,
-        "description": "Expose each zone's light and window covering as two HomeKit accessories, each with its own name and room. When disabled, they are grouped in a single accessory per zone. Switching re-creates the window covering accessories in HomeKit (lights are kept).",
+        "description": "Expose each zone's light and each of its window coverings as separate HomeKit accessories (e.g. \"Lounge Light\", \"Lounge Shutter 1\", \"Lounge Shutter 2\"), each with its own name and room. When disabled, they are grouped in a single accessory per zone. Switching re-creates the window covering accessories in HomeKit (lights are kept).",
         "condition": {
           "functionBody": "return model.zones === true;"
         }

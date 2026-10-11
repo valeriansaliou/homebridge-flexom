@@ -1,6 +1,7 @@
 import { createHttpClient } from './http';
 import {
   MASTER_ZONE_ID,
+  type Actuator,
   type Factor,
   type HemisUser,
   type Zone,
@@ -73,5 +74,42 @@ export function createHemisService({
     });
   };
 
-  return { login, getZones, getZoneSettings, setZoneFactor };
+  /** Actuators acting on a zone factor, with their actual state */
+  const getFactorActuators = ({
+    zoneId,
+    factor,
+  }: {
+    zoneId: string;
+    factor: Factor;
+  }) =>
+    request<Actuator[]>({
+      path: `/WS_ReactiveEnvironmentDataManagement/${zoneId}/${factor}/actuators`,
+    });
+
+  /** Drives a single actuator, e.g. one blind's position or slats */
+  const setActuatorState = async ({
+    itId,
+    actuatorId,
+    value,
+  }: {
+    itId: string;
+    actuatorId: string;
+    value: number;
+  }) => {
+    await request<unknown>({
+      method: 'PUT',
+      path: `/intelligent-things/${encodeURIComponent(itId)}/actuator/${encodeURIComponent(actuatorId)}/state`,
+      body: { value },
+      encoding: 'json',
+    });
+  };
+
+  return {
+    login,
+    getZones,
+    getZoneSettings,
+    setZoneFactor,
+    getFactorActuators,
+    setActuatorState,
+  };
 }

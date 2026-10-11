@@ -62,8 +62,22 @@ export type ActuatorHardwareStateEvent = {
   type: 'ACTUATOR_HARDWARE_STATE';
   timestamp: number;
   zoneId?: string;
+  /** Intelligent thing (device) owning the actuator */
+  itId?: string;
   factorId: Factor;
-  value: { value: number };
+  value: { value: number; actuatorId?: string };
+};
+
+/** What an actuator moves, e.g. a venetian blind has a roller and slats */
+export type ActuationRepresentation =
+  'VERTICAL_ROLLER' | 'HORIZONTAL_SLATS' | (string & {});
+
+export type Actuator = {
+  itId: string;
+  actuatorId: string;
+  actionningRepresentation?: ActuationRepresentation;
+  /** Actual state reported by the device */
+  hardwareState?: { value: number | null } | null;
 };
 
 export type HemisEvent =

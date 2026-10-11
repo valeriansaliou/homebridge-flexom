@@ -198,6 +198,14 @@ export function createClient({
       (h, params: Parameters<HemisService['setZoneFactor']>[0]) =>
         h.setZoneFactor(params),
     ),
+    getFactorActuators: withSession(
+      (h, params: Parameters<HemisService['getFactorActuators']>[0]) =>
+        h.getFactorActuators(params),
+    ),
+    setActuatorState: withSession(
+      (h, params: Parameters<HemisService['setActuatorState']>[0]) =>
+        h.setActuatorState(params),
+    ),
     subscribe,
     unsubscribe,
     disconnect,

@@ -5,10 +5,7 @@ import type {
   PlatformConfig,
 } from 'homebridge';
 
-import {
-  createFlexomZone,
-  getZoneAccessoryUuids,
-} from './accessories/flexomZone';
+import { belongsToZone, createFlexomZone } from './accessories/flexomZone';
 import { markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
@@ -80,10 +77,12 @@ export function createFlexomPlatform({
     });
 
     const used = new Set(flexomZone?.accessories);
-    Object.values(getZoneAccessoryUuids(api, zone))
-      .map((uuid) => accessories.get(uuid))
-      .filter((accessory) => accessory && !used.has(accessory))
-      .forEach((accessory) => unregister(accessory!));
+    [...accessories.values()]
+      .filter(
+        (accessory) =>
+          belongsToZone(api, accessory, zone) && !used.has(accessory),
+      )
+      .forEach(unregister);
 
     for (const accessory of used) {
       if (accessories.has(accessory.UUID)) {
@@ -108,11 +107,11 @@ export function createFlexomPlatform({
     });
     logger.info(`Found ${zones.length} zones`);
 
-    const zoneUuids = new Set(
-      zones.flatMap((zone) => Object.values(getZoneAccessoryUuids(api, zone))),
-    );
     [...accessories.values()]
-      .filter((accessory) => !zoneUuids.has(accessory.UUID))
+      .filter(
+        (accessory) =>
+          !zones.some((zone) => belongsToZone(api, accessory, zone)),
+      )
       .forEach(unregister);
 
     // Zones are retried independently, so one failing zone does not block others
