@@ -14,33 +14,28 @@ export function createChildLogger({
   });
 }
 
-function hasErr(args: object): args is { err: object } {
-  return 'err' in args && typeof args === 'object' && args != null;
+function serializeError(err: Error): Record<string, unknown> {
+  return _.omitBy(
+    {
+      name: err.name,
+      message: err.message,
+      code: _.get(err, 'code'),
+      status: _.get(err, 'response.status'),
+      cause: err.cause,
+    },
+    (v) => v === undefined,
+  );
 }
 
-export function toLogJson(args: unknown) {
-  if (!args || typeof args !== 'object') return JSON.stringify(args);
-  return JSON.stringify({
-    ...args,
-    err:
-      hasErr(args) &&
-      Object.defineProperties(args.err, {
-        message: {
-          enumerable: true,
-        },
-        code: {
-          enumerable: true,
-        },
-        stack: {
-          enumerable: true,
-        },
-      }),
-  });
+export function toLogJson(value: unknown) {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v instanceof Error ? serializeError(v) : v,
+  );
 }
 
 function loggerParamsAdapter(
-  log: (msg: string) => void
-): (argsOrMsg: string | unknown, msg?: string) => void {
+  log: (msg: string) => void,
+): (argsOrMsg: unknown, msg?: string) => void {
   return (argsOrMsg, msg) => {
     if (_.isString(argsOrMsg)) {
       log(argsOrMsg);
@@ -59,10 +54,7 @@ function loggerParamsAdapter(
 type SupportedLogLevels = 'info' | 'warn' | 'error' | 'debug';
 
 export function loggerAdapter({ logger }: { logger: Logger }): {
-  [key in SupportedLogLevels]: (
-    argsOrMsg: string | unknown,
-    msg?: string
-  ) => void;
+  [key in SupportedLogLevels]: (argsOrMsg: unknown, msg?: string) => void;
 } {
   return {
     info: loggerParamsAdapter(logger.info?.bind(logger)),
@@ -70,11 +62,4 @@ export function loggerAdapter({ logger }: { logger: Logger }): {
     error: loggerParamsAdapter(logger.error?.bind(logger)),
     debug: loggerParamsAdapter(logger.debug?.bind(logger)),
   };
-}
-
-export function realError(error: unknown): Error {
-  if (error instanceof Error) {
-    return error;
-  }
-  return Object.assign(new Error('Unknown error'), { cause: error });
 }

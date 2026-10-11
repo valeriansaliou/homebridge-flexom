@@ -26,6 +26,7 @@ export async function createLightBulb({
   service.setCharacteristic(api.hap.Characteristic.Name, name);
 
   const lightOnService = await bindService<boolean>({
+    hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.On,
     initialValue: await getState(),

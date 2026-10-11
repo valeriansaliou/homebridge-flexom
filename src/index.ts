@@ -25,6 +25,6 @@ export default (homebridgeApi: API) => {
       configureAccessory(accessory: PlatformAccessory) {
         this.platform.configureAccessory({ accessory });
       }
-    }
+    },
   );
 };

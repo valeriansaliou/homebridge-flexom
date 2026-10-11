@@ -38,6 +38,7 @@ export async function createWindowCovering({
   service.setCharacteristic(api.hap.Characteristic.Name, name);
 
   const currentPositionService = await bindService<number>({
+    hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.CurrentPosition,
     initialValue: await getState(),
@@ -46,6 +47,7 @@ export async function createWindowCovering({
   });
 
   const targetPositionService = await bindService<number>({
+    hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.TargetPosition,
     initialValue: currentPositionService.getValue(),
@@ -56,12 +58,12 @@ export async function createWindowCovering({
   const { STOPPED, INCREASING, DECREASING } =
     api.hap.Characteristic.PositionState;
 
-  const getPositionState = async () => {
+  const getPositionState = (): PositionState => {
     const currentPosition = currentPositionService.getValue();
     const targetPosition = targetPositionService.getValue();
     logger.debug(
       'homekit get position state ' +
-        `(current: ${currentPosition} / target: ${targetPosition})`
+        `(current: ${currentPosition} / target: ${targetPosition})`,
     );
     if (Math.abs(currentPosition - targetPosition) < tolerance) {
       return STOPPED;
@@ -73,6 +75,7 @@ export async function createWindowCovering({
   };
 
   const positionStateService = await bindService<PositionState>({
+    hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.PositionState,
     initialValue: STOPPED,

@@ -1,40 +1,42 @@
 import type {
+  Characteristic,
   CharacteristicValue,
-  CharacteristicGetCallback,
-  CharacteristicSetCallback,
-  Service,
+  HAP,
   Logger,
+  Service,
+  WithUUID,
 } from 'homebridge';
-import _ from 'lodash';
-import { realError, toLogJson } from '../utils';
+import { toLogJson } from '../utils';
 
-type CharacteristicGetter<T> = () => Promise<T>;
+type HomeKitValue = boolean | number;
+
+type CharacteristicGetter<T> = () => T | Promise<T>;
 type CharacteristicSetter<T> = (
-  value: T
+  value: T,
 ) => Promise<void | { aborted: boolean }>;
 type CharacteristicListener<T> = (value: T) => Promise<void>;
 
-type CharacteristicService<
-  T extends CharacteristicValue = CharacteristicValue
-> = {
+type CharacteristicService<T extends HomeKitValue = HomeKitValue> = {
   getValue: () => T;
   setValue: (newValue: T) => Promise<void>;
   setInternalValue: (newValue: T) => void;
   refreshValue: () => Promise<void>;
-  onValue: (listener: CharacteristicListener<T>) => number;
+  onValue: (listener: CharacteristicListener<T>) => void;
 };
 
-export async function bindService<T extends CharacteristicValue>({
+export async function bindService<T extends HomeKitValue>({
+  hap,
   service,
   characteristic,
   getState,
   initialValue,
   setState,
   logger,
-  dependencies,
+  dependencies = [],
 }: {
+  hap: HAP;
   service: Service;
-  characteristic: Parameters<Service['updateCharacteristic']>[0];
+  characteristic: WithUUID<new () => Characteristic>;
   initialValue: T;
   getState?: CharacteristicGetter<T>;
   setState?: CharacteristicSetter<T>;
@@ -42,10 +44,6 @@ export async function bindService<T extends CharacteristicValue>({
   dependencies?: Array<Pick<CharacteristicService, 'onValue'>>;
 }): Promise<CharacteristicService<T>> {
   const listeners: Array<CharacteristicListener<T>> = [];
-
-  if (initialValue === undefined && getState === undefined) {
-    throw new Error('at least one of initialValue or getState required');
-  }
 
   let internalValue: T = initialValue;
 
@@ -74,47 +72,35 @@ export async function bindService<T extends CharacteristicValue>({
       return;
     }
     setInternalValue(newValue);
-    await Promise.all(_.map(listeners, (listener) => listener(newValue)));
+    await Promise.all(listeners.map((listener) => listener(newValue)));
   };
 
   await refreshValue();
 
+  service.getCharacteristic(characteristic).onGet(() => {
+    logger.debug(`homekit get state ${internalValue}`);
+    refreshValue().catch((err: unknown) => {
+      logger.error(`failed to refresh state: ${toLogJson(err)}`);
+    });
+    return internalValue;
+  });
+
   service
     .getCharacteristic(characteristic)
-    ?.on('get', (callback: CharacteristicGetCallback) => {
+    .onSet(async (newValue: CharacteristicValue) => {
+      logger.debug(`homekit set state ${JSON.stringify(newValue)}`);
       try {
-        logger.debug(`homekit get state ${internalValue}`);
-        setImmediate(() => refreshValue());
-        callback(undefined, internalValue);
+        await setValue(newValue as T);
       } catch (err: unknown) {
-        logger.error(`failed to get state: ${toLogJson(err)}`);
-        callback(realError(err));
+        logger.error(`failed to reach target state: ${toLogJson(err)}`);
+        throw new hap.HapStatusError(
+          hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+        );
       }
     });
 
-  service
-    .getCharacteristic(characteristic)
-    ?.on(
-      'set',
-      async (
-        newValue: CharacteristicValue,
-        callback: CharacteristicSetCallback
-      ) => {
-        try {
-          logger.debug(`homekit set state ${newValue}`);
-          await setValue(newValue as T);
-          callback();
-        } catch (err: unknown) {
-          logger.error(`failed to reach target state: ${toLogJson(err)}`);
-          callback(realError(err));
-        }
-      }
-    );
-
-  await Promise.all(
-    _.map(dependencies, async (dependency) =>
-      dependency.onValue(async () => refreshValue())
-    )
+  dependencies.forEach((dependency) =>
+    dependency.onValue(() => refreshValue()),
   );
 
   return {
@@ -122,6 +108,8 @@ export async function bindService<T extends CharacteristicValue>({
     setValue,
     setInternalValue,
     refreshValue,
-    onValue: (listener: CharacteristicListener<T>) => listeners.push(listener),
+    onValue: (listener: CharacteristicListener<T>) => {
+      listeners.push(listener);
+    },
   };
 }

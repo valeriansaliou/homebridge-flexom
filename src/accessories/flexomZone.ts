@@ -48,7 +48,7 @@ export async function createFlexomZone({
     settings = await flexom.getZoneSettings(zone);
   }, DEBOUNCE_DELAY);
 
-  const updateZoneBRI = _.debounce(async (value) => {
+  const updateZoneBRI = _.debounce(async (value: number) => {
     logger.debug(`flexom request setZoneFactor BRI ${value}`);
     return flexom.setZoneFactor({
       id: zone.id,
@@ -59,7 +59,7 @@ export async function createFlexomZone({
     });
   }, DEBOUNCE_DELAY);
 
-  const updateZoneBRIEXT = _.debounce(async (value) => {
+  const updateZoneBRIEXT = _.debounce(async (value: number) => {
     logger.debug(`flexom request setZoneFactor BRIEXT ${value}`);
     return flexom.setZoneFactor({
       id: zone.id,

@@ -25,7 +25,7 @@ export type FlexomPlatformConfig = PlatformConfig & {
   things: boolean;
 };
 
-async function cleanup({
+function cleanup({
   accessories,
   activeAccessories = [],
   logger,
@@ -41,7 +41,7 @@ async function cleanup({
     .differenceBy(activeAccessories, 'UUID')
     .forEach((accessory) => {
       logger.info(
-        `Unregister accessory: ${accessory.displayName} (UUID: ${accessory.UUID})`
+        `Unregister accessory: ${accessory.displayName} (UUID: ${accessory.UUID})`,
       );
       api.unregisterPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
         accessory,
@@ -71,7 +71,6 @@ async function setupZone({
   const uuid = api.hap.uuid.generate(zone.id);
   const existingAccessory = _.get(accessories, uuid);
   const accessory =
-    // eslint-disable-next-line new-cap
     existingAccessory ?? new api.platformAccessory(zone.name, uuid);
 
   try {
@@ -134,12 +133,12 @@ async function discoverZones({
           flexom,
           logger,
           api,
-        })
-      )
-    )
+        }),
+      ),
+    ),
   );
   logger.info(`Setup ${activeAccessories.length} zones`);
-  await cleanup({ accessories, activeAccessories, logger, api });
+  cleanup({ accessories, activeAccessories, logger, api });
 }
 
 export function createFlexomPlatform({
@@ -155,11 +154,11 @@ export function createFlexomPlatform({
 
   logger.debug(`Finished initializing platform: ${config.name}`);
 
-  api.on('didFinishLaunching', async () => {
+  const init = async () => {
     try {
       if (!config.zones) {
         logger.warn('"Show Flexom Zones" is disabled in config, nothing to do');
-        await cleanup({ accessories, api, logger });
+        cleanup({ accessories, api, logger });
         return;
       }
 
@@ -182,6 +181,10 @@ export function createFlexomPlatform({
         logger.error(`Flexom initialization error: ${toLogJson(err)}`);
       }
     }
+  };
+
+  api.on('didFinishLaunching', () => {
+    void init();
   });
 
   return {
