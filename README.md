@@ -17,7 +17,7 @@ This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
 ## Features
 
-- Flexom Zones (i.e. rooms) appear as HomeKit accessories with light and window covering (rolling shutter) controls.
+- Flexom Zones (i.e. rooms) appear in HomeKit as light and window covering (rolling shutter) accessories.
 - Changes made outside HomeKit (wall switches, Flexom app) are reflected live through the Flexom WebSocket, and every zone is periodically refreshed from the Flexom API in case an event was missed.
 - Recovers on its own from network drops and Flexom API outages, without restarting Homebridge.
 - Nothing is written to the Homebridge log during normal operation (events, commands), sparing Raspberry Pi SD cards. Use Homebridge debug mode (`-D`) to see details.

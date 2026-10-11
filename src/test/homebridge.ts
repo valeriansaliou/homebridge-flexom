@@ -9,11 +9,11 @@ export function createTestApi() {
 }
 
 /** HAP's Accessory has the same service API as Homebridge's PlatformAccessory */
-export function createTestAccessory(name: string) {
-  return new hap.Accessory(
-    name,
-    hap.uuid.generate(name),
-  ) as unknown as PlatformAccessory;
+export function createTestAccessory(
+  name: string,
+  uuid = hap.uuid.generate(name),
+) {
+  return new hap.Accessory(name, uuid) as unknown as PlatformAccessory;
 }
 
 export function createTestLogger() {

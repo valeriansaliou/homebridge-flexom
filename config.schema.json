@@ -29,6 +29,15 @@
         "default": true,
         "description": "Flexom Zones (i.e. rooms) will appear as devices with light and rolling shutter controls."
       },
+      "separateAccessories": {
+        "title": "Separate light and shutter accessories",
+        "type": "boolean",
+        "default": true,
+        "description": "Expose each zone's light and window covering as two HomeKit accessories, each with its own name and room. When disabled, they are grouped in a single accessory per zone. Switching re-creates the window covering accessories in HomeKit (lights are kept).",
+        "condition": {
+          "functionBody": "return model.zones === true;"
+        }
+      },
       "tolerance": {
         "title": "Factor value tolerance",
         "type": "number",

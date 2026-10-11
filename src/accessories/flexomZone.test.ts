@@ -7,7 +7,8 @@ import {
   createTestLogger,
   hap,
 } from '../test/homebridge';
-import { createFlexomZone } from './flexomZone';
+import type { PlatformAccessory } from 'homebridge';
+import { createFlexomZone, type GetAccessory } from './flexomZone';
 
 const zone = { id: 'zone-1', name: 'Kitchen' };
 
@@ -43,13 +44,27 @@ function createFakeFlexom(initialSettings: ZoneSettings) {
   };
 }
 
-async function setup(settings: ZoneSettings) {
+async function setup(
+  settings: ZoneSettings,
+  {
+    separateAccessories = true,
+    cached = [],
+  }: { separateAccessories?: boolean; cached?: PlatformAccessory[] } = {},
+) {
   const fake = createFakeFlexom(settings);
-  const accessory = createTestAccessory(zone.name);
   const logger = createTestLogger();
+  const hapWarnings = vi.fn();
+  // Like the platform: cached accessories, or a new one on every call
+  const known = new Map(cached.map((a) => [a.UUID, a]));
+  const getAccessory: GetAccessory = ({ uuid, name }) => {
+    const accessory = known.get(uuid) ?? createTestAccessory(name, uuid);
+    accessory.on('characteristic-warning' as never, hapWarnings);
+    return accessory;
+  };
   const flexomZone = await createFlexomZone({
     api: createTestApi(),
-    accessory,
+    getAccessory,
+    separateAccessories,
     logger,
     zone,
     flexom: fake.flexom,
@@ -61,10 +76,12 @@ async function setup(settings: ZoneSettings) {
   const characteristic = (
     service: typeof hap.Service.Lightbulb | typeof hap.Service.WindowCovering,
     type: Parameters<hap.Service['getCharacteristic']>[0],
-  ) => accessory.getService(service)!.getCharacteristic(type)!;
+  ) =>
+    flexomZone!.accessories
+      .map((accessory) => accessory.getService(service))
+      .find(Boolean)!
+      .getCharacteristic(type)!;
   const infoLines = () => logger.info.mock.calls.map(([line]) => line);
-  const hapWarnings = vi.fn();
-  accessory.on('characteristic-warning' as never, hapWarnings);
   return {
     ...fake,
     flexomZone: flexomZone!,
@@ -89,7 +106,8 @@ describe('createFlexomZone', () => {
     await expect(
       createFlexomZone({
         api: createTestApi(),
-        accessory: createTestAccessory(zone.name),
+        getAccessory: ({ uuid, name }) => createTestAccessory(name, uuid),
+        separateAccessories: true,
         logger: createTestLogger(),
         zone,
         flexom: fake.flexom,
@@ -399,6 +417,87 @@ describe('createFlexomZone', () => {
         target: 70,
         state: PositionState.STOPPED,
       });
+    });
+  });
+
+  describe('accessories', () => {
+    const zoneUuid = hap.uuid.generate(zone.id);
+    const windowUuid = hap.uuid.generate(`${zone.id}:window`);
+    const describeAccessories = (accessories: PlatformAccessory[]) =>
+      accessories.map((accessory) => ({
+        uuid: accessory.UUID,
+        name: accessory.displayName,
+        light: !!accessory.getService(hap.Service.Lightbulb),
+        window: !!accessory.getService(hap.Service.WindowCovering),
+        serial: accessory
+          .getService(hap.Service.AccessoryInformation)!
+          .getCharacteristic(hap.Characteristic.SerialNumber).value,
+      }));
+
+    it('exposes the light and window covering separately by default', async () => {
+      const { flexomZone } = await setup({
+        BRI: { value: 0 },
+        BRIEXT: { value: 0 },
+      });
+
+      expect(describeAccessories(flexomZone.accessories)).toEqual([
+        {
+          uuid: zoneUuid,
+          name: 'Kitchen Light',
+          light: true,
+          window: false,
+          serial: zone.id,
+        },
+        {
+          uuid: windowUuid,
+          name: 'Kitchen Shutter',
+          light: false,
+          window: true,
+          serial: zone.id,
+        },
+      ]);
+    });
+
+    it('can group them in a single accessory', async () => {
+      const { flexomZone } = await setup(
+        { BRI: { value: 0 }, BRIEXT: { value: 0 } },
+        { separateAccessories: false },
+      );
+
+      expect(describeAccessories(flexomZone.accessories)).toEqual([
+        {
+          uuid: zoneUuid,
+          name: 'Kitchen',
+          light: true,
+          window: true,
+          serial: zone.id,
+        },
+      ]);
+    });
+
+    it('keeps the cached accessory for the light when splitting', async () => {
+      const cached = createTestAccessory('Kitchen', zoneUuid);
+      cached.addService(hap.Service.Lightbulb);
+      cached.addService(hap.Service.WindowCovering);
+
+      const { flexomZone } = await setup(
+        { BRI: { value: 0 }, BRIEXT: { value: 0 } },
+        { cached: [cached] },
+      );
+
+      expect(flexomZone.accessories[0]).toBe(cached);
+      expect(describeAccessories(flexomZone.accessories)).toMatchObject([
+        { uuid: zoneUuid, light: true, window: false },
+        { uuid: windowUuid, light: false, window: true },
+      ]);
+    });
+
+    it('only uses the accessories a zone needs', async () => {
+      const { flexomZone } = await setup({ BRIEXT: { value: 0 } });
+
+      expect(describeAccessories(flexomZone.accessories)).toMatchObject([
+        { uuid: windowUuid, name: 'Kitchen Shutter' },
+      ]);
     });
   });
 });

@@ -20,13 +20,30 @@ function toPosition(factorValue: number) {
 }
 
 export type FlexomZone = {
+  /** Accessories exposing this zone's controls */
+  accessories: PlatformAccessory[];
   /** Fetches the zone state from the API and fixes HomeKit if it drifted */
   refresh: () => Promise<void>;
 };
 
+export type GetAccessory = (params: {
+  uuid: string;
+  name: string;
+}) => PlatformAccessory;
+
+/** UUIDs of every accessory a zone may use, whatever the configuration */
+export function getZoneAccessoryUuids(api: API, zone: Flexom.Zone) {
+  return {
+    // Kept for lights when splitting accessories, to preserve their setup
+    zone: api.hap.uuid.generate(zone.id),
+    window: api.hap.uuid.generate(`${zone.id}:window`),
+  };
+}
+
 export async function createFlexomZone({
   api,
-  accessory,
+  getAccessory,
+  separateAccessories,
   exclusions = {},
   flexom,
   zone,
@@ -34,7 +51,10 @@ export async function createFlexomZone({
   logger: parentLogger,
 }: {
   api: API;
-  accessory: PlatformAccessory;
+  /** Returns the cached accessory with this UUID, or a new one */
+  getAccessory: GetAccessory;
+  /** One accessory for the light and one for the window covering */
+  separateAccessories: boolean;
   exclusions: Partial<{
     light: boolean;
     window: boolean;
@@ -45,15 +65,6 @@ export async function createFlexomZone({
   tolerance: number;
 }): Promise<FlexomZone | undefined> {
   const logger = createChildLogger({ parentLogger, prefix: zone.name });
-
-  accessory
-    .getService(api.hap.Service.AccessoryInformation)
-    ?.setCharacteristic(api.hap.Characteristic.Manufacturer, 'Flexom');
-
-  accessory
-    .getService(api.hap.Service.AccessoryInformation)
-    ?.setCharacteristic(api.hap.Characteristic.Model, 'Zone')
-    .setCharacteristic(api.hap.Characteristic.SerialNumber, zone.id);
 
   let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
 
@@ -78,48 +89,72 @@ export async function createFlexomZone({
     return undefined;
   }
 
+  const uuids = getZoneAccessoryUuids(api, zone);
+  const lightName = separateAccessories ? `${zone.name} Light` : zone.name;
+  const windowName = separateAccessories ? `${zone.name} Shutter` : zone.name;
+  const lightAccessory = isLightEnabled
+    ? getAccessory({ uuid: uuids.zone, name: lightName })
+    : undefined;
+  const windowUuid = separateAccessories ? uuids.window : uuids.zone;
+  // Grouped controls share one accessory: only get it once
+  const windowAccessory = !isWindowEnabled
+    ? undefined
+    : lightAccessory?.UUID === windowUuid
+      ? lightAccessory
+      : getAccessory({ uuid: windowUuid, name: windowName });
+  const accessories = [
+    ...new Set([lightAccessory, windowAccessory].filter((a) => !!a)),
+  ];
+
+  for (const accessory of accessories) {
+    accessory
+      .getService(api.hap.Service.AccessoryInformation)
+      ?.setCharacteristic(api.hap.Characteristic.Manufacturer, 'Flexom')
+      .setCharacteristic(api.hap.Characteristic.Model, 'Zone')
+      .setCharacteristic(api.hap.Characteristic.SerialNumber, zone.id);
+    // Drop services left over from another configuration
+    const lightService = accessory.getService(api.hap.Service.Lightbulb);
+    if (lightService && accessory !== lightAccessory) {
+      accessory.removeService(lightService);
+    }
+    const windowService = accessory.getService(api.hap.Service.WindowCovering);
+    if (windowService && accessory !== windowAccessory) {
+      accessory.removeService(windowService);
+    }
+  }
+
   let lastLightCommandAt = 0;
   const isLightCommandSettling = () =>
     Date.now() - lastLightCommandAt < COMMAND_SETTLE_DELAY;
 
-  let lightBulb: LightBulb;
-  if (isLightEnabled) {
+  let lightBulb: LightBulb | undefined;
+  if (lightAccessory) {
     logger.info('Create light bulb');
     lightBulb = createLightBulb({
       api,
       logger,
-      accessory,
-      name: zone.name,
+      accessory: lightAccessory,
+      name: lightName,
       initialState: (settings.BRI?.value ?? 0) > 0,
       setState: (isOn: boolean) => {
         lastLightCommandAt = Date.now();
         updateZoneBRI(isOn ? 1 : 0);
       },
     });
-  } else {
-    const service = accessory.getService(api.hap.Service.Lightbulb);
-    if (service) {
-      accessory.removeService(service);
-    }
   }
 
-  let windowCovering: WindowCovering;
-  if (isWindowEnabled) {
+  let windowCovering: WindowCovering | undefined;
+  if (windowAccessory) {
     logger.info('Create window covering');
     windowCovering = createWindowCovering({
       api,
       logger,
-      accessory,
-      name: zone.name,
+      accessory: windowAccessory,
+      name: windowName,
       tolerance: tolerance * 100,
       initialPosition: toPosition(settings.BRIEXT?.value ?? 0),
       sendTarget: (target: number) => updateZoneBRIEXT(target / 100),
     });
-  } else {
-    const service = accessory.getService(api.hap.Service.WindowCovering);
-    if (service) {
-      accessory.removeService(service);
-    }
   }
 
   const onOff = (isOn: boolean) => (isOn ? 'on' : 'off');
@@ -215,5 +250,5 @@ export async function createFlexomZone({
     },
   });
 
-  return { refresh };
+  return { accessories, refresh };
 }

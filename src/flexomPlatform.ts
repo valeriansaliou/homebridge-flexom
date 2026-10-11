@@ -5,7 +5,10 @@ import type {
   PlatformConfig,
 } from 'homebridge';
 
-import { createFlexomZone } from './accessories/flexomZone';
+import {
+  createFlexomZone,
+  getZoneAccessoryUuids,
+} from './accessories/flexomZone';
 import { markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
@@ -18,6 +21,8 @@ export type FlexomPlatformConfig = PlatformConfig & {
   password: string;
   zones: boolean;
   tolerance: number;
+  /** One accessory for the light and one for the window covering */
+  separateAccessories?: boolean;
   /** Seconds between state refreshes from the API, 0 to disable */
   refreshInterval?: number;
   excludeZones?: boolean;
@@ -59,17 +64,14 @@ export function createFlexomPlatform({
     zone: Flexom.Zone;
     client: Flexom.FlexomClient;
   }) => {
-    const uuid = api.hap.uuid.generate(zone.id);
-    const existingAccessory = accessories.get(uuid);
-    const accessory =
-      existingAccessory ?? new api.platformAccessory(zone.name, uuid);
-
     const exclusion = config.excludeZones
       ? config.excludedZones?.find(({ id }) => id === zone.id)
       : undefined;
     const flexomZone = await createFlexomZone({
       api,
-      accessory,
+      getAccessory: ({ uuid, name }) =>
+        accessories.get(uuid) ?? new api.platformAccessory(name, uuid),
+      separateAccessories: config.separateAccessories ?? true,
       logger,
       zone,
       flexom: client,
@@ -77,19 +79,25 @@ export function createFlexomPlatform({
       exclusions: { light: exclusion?.light, window: exclusion?.window },
     });
 
-    if (!flexomZone) {
-      if (existingAccessory) unregister(existingAccessory);
-      return undefined;
+    const used = new Set(flexomZone?.accessories);
+    Object.values(getZoneAccessoryUuids(api, zone))
+      .map((uuid) => accessories.get(uuid))
+      .filter((accessory) => accessory && !used.has(accessory))
+      .forEach((accessory) => unregister(accessory!));
+
+    for (const accessory of used) {
+      if (accessories.has(accessory.UUID)) {
+        logger.info(`Update accessory: ${accessory.displayName}`);
+        api.updatePlatformAccessories([accessory]);
+      } else {
+        logger.info(`Register accessory: ${accessory.displayName}`);
+        api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [
+          accessory,
+        ]);
+        accessories.set(accessory.UUID, accessory);
+      }
     }
-    if (existingAccessory) {
-      logger.info(`Update accessory: ${zone.name}`);
-      api.updatePlatformAccessories([accessory]);
-    } else {
-      logger.info(`Register accessory: ${zone.name}`);
-      api.registerPlatformAccessories(PLUGIN_NAME, PLATFORM_NAME, [accessory]);
-      accessories.set(uuid, accessory);
-    }
-    return { name: zone.name, refresh: flexomZone.refresh };
+    return flexomZone && { name: zone.name, refresh: flexomZone.refresh };
   };
 
   const discoverZones = async (client: Flexom.FlexomClient) => {
@@ -101,7 +109,7 @@ export function createFlexomPlatform({
     logger.info(`Found ${zones.length} zones`);
 
     const zoneUuids = new Set(
-      zones.map((zone) => api.hap.uuid.generate(zone.id)),
+      zones.flatMap((zone) => Object.values(getZoneAccessoryUuids(api, zone))),
     );
     [...accessories.values()]
       .filter((accessory) => !zoneUuids.has(accessory.UUID))

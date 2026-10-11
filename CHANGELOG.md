@@ -34,6 +34,11 @@
 
 ### Added
 
+- Each zone's light and window covering are now separate HomeKit accessories
+  (e.g. "Lounge Light" and "Lounge Shutter"), so each can have its own name and
+  room. Existing accessories are kept for lights; window coverings get new
+  accessories. Set `separateAccessories` to `false` to keep them grouped.
+
 - Periodic state refresh from the Flexom API (default every 15 minutes,
   configurable in seconds, 0 to disable) to fix missed events, e.g. a light
   switched with a wall switch.
