@@ -1,30 +1,22 @@
 import { createHttpClient } from './http';
 import {
   MASTER_ZONE_ID,
-  type EventListener,
   type Factor,
   type HemisUser,
-  type Logger,
   type Zone,
   type ZoneSettings,
 } from './types';
-import { createWsClient } from './ws';
+
+export type HemisService = ReturnType<typeof createHemisService>;
 
 export function createHemisService({
   baseUrl,
-  wsUrl,
   userId,
-  buildingId,
-  logger,
 }: {
   baseUrl: string;
-  wsUrl: string;
   userId: string;
-  buildingId: string;
-  logger: Logger;
 }) {
   let token: string | undefined;
-  let wsClient: ReturnType<typeof createWsClient> | undefined;
 
   const request = createHttpClient({
     baseUrl,
@@ -34,12 +26,6 @@ export function createHemisService({
       ...(token && { Authorization: `Bearer ${token}` }),
     }),
   });
-
-  const getWsClient = () => {
-    if (!token) throw new Error('Not logged in to Hemis');
-    wsClient ??= createWsClient({ wsUrl, buildingId, token, logger });
-    return wsClient;
-  };
 
   const login = async ({
     email,
@@ -56,15 +42,7 @@ export function createHemisService({
       body: { email, password, kernelId },
     });
     token = user.token;
-    (await getWsClient()).updateToken(token);
-    return user;
-  };
-
-  const logout = async () => {
-    token = undefined;
-    const client = wsClient;
-    wsClient = undefined;
-    await (await client)?.disconnect();
+    return user.token;
   };
 
   const getZones = async () => {
@@ -95,21 +73,5 @@ export function createHemisService({
     });
   };
 
-  const subscribe = async (listener: EventListener) => {
-    (await getWsClient()).addListener(listener);
-  };
-
-  const unsubscribe = async (listener: Pick<EventListener, 'id'>) => {
-    (await wsClient)?.removeListener(listener);
-  };
-
-  return {
-    login,
-    logout,
-    getZones,
-    getZoneSettings,
-    setZoneFactor,
-    subscribe,
-    unsubscribe,
-  };
+  return { login, getZones, getZoneSettings, setZoneFactor };
 }

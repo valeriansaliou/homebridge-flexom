@@ -117,6 +117,36 @@ export async function createFlexomZone({
   }
 
   const { STOPPED } = api.hap.Characteristic.PositionState;
+  const applyFactor = (factor: Flexom.Factor, factorValue: number) => {
+    switch (factor) {
+      case 'BRI': {
+        if (!lightBulb) return;
+        lightBulb.lightOnService.setInternalValue(factorValue > 0);
+        break;
+      }
+      case 'BRIEXT': {
+        if (!windowCovering) return;
+        const positionState = windowCovering.positionStateService.getValue();
+        const value = factorValue * 100;
+        windowCovering.currentPositionService.setInternalValue(value);
+        if (positionState === STOPPED) {
+          windowCovering.targetPositionService.setInternalValue(value);
+        }
+        break;
+      }
+      default:
+    }
+  };
+
+  // Events may have been missed while the WebSocket was down
+  const resync = async () => {
+    settings = await flexom.getZoneSettings(zone);
+    for (const factor of ['BRI', 'BRIEXT'] as const) {
+      const factorSettings = settings[factor];
+      if (factorSettings) applyFactor(factor, factorSettings.value);
+    }
+  };
+
   await flexom.subscribe({
     id: `homebridge-flexom-${zone.id}`,
     events: ['ACTUATOR_HARDWARE_STATE'],
@@ -124,25 +154,14 @@ export async function createFlexomZone({
     listener: (data) => {
       if (data.type !== 'ACTUATOR_HARDWARE_STATE') return;
       logger.info(`Received event: ${toLogJson(data)}`);
-      switch (data.factorId) {
-        case 'BRI': {
-          if (!lightBulb) return;
-          const value = data.value.value > 0;
-          lightBulb.lightOnService.setInternalValue(value);
-          break;
-        }
-        case 'BRIEXT': {
-          if (!windowCovering) return;
-          const positionState = windowCovering.positionStateService.getValue();
-          const value = data.value.value * 100;
-          windowCovering.currentPositionService.setInternalValue(value);
-          if (positionState === STOPPED) {
-            windowCovering.targetPositionService.setInternalValue(value);
-          }
-          break;
-        }
-        default:
-      }
+      applyFactor(data.factorId, data.value.value);
+    },
+    onReconnect: () => {
+      resync().catch((err: unknown) => {
+        logger.warn(
+          `Failed to refresh state after reconnect: ${toLogJson(err)}`,
+        );
+      });
     },
   });
 

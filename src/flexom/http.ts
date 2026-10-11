@@ -3,6 +3,8 @@ const REQUEST_TIMEOUT = 15_000; /* ms */
 export class FlexomHttpError extends Error {
   readonly status: number;
 
+  readonly path: string;
+
   constructor({
     method,
     path,
@@ -15,6 +17,7 @@ export class FlexomHttpError extends Error {
     super(`${method} ${path} failed with HTTP ${status}`);
     this.name = 'FlexomHttpError';
     this.status = status;
+    this.path = path;
   }
 }
 

@@ -1,43 +1,62 @@
-import type { EventListener, HemisEvent, Logger } from './types';
+import type { HemisEvent, Logger } from './types';
+
+const RECONNECT_DELAY = 1000; /* ms */
+const MAX_RECONNECT_DELAY = 60_000; /* ms */
+const CONNECTION_TIMEOUT = 15_000; /* ms */
+const HEARTBEAT_INTERVAL = 20_000; /* ms */
 
 export async function createWsClient({
   wsUrl,
   buildingId,
-  token,
+  getToken,
+  onEvent,
+  onConnect,
+  onStompError,
   logger,
 }: {
   wsUrl: string;
   buildingId: string;
-  token: string;
+  getToken: () => Promise<string>;
+  onEvent: (event: HemisEvent) => void;
+  onConnect: (event: { isReconnect: boolean }) => void;
+  onStompError: () => void;
   logger: Logger;
 }) {
   // stompjs is ESM-only: it cannot be require()d from this CommonJS build
-  const { Client } = await import('@stomp/stompjs');
-  const listeners = new Map<string, EventListener>();
+  const { Client, ReconnectionTimeMode } = await import('@stomp/stompjs');
 
-  const dispatch = (event: HemisEvent) => {
-    for (const { id, events, zoneId, listener } of listeners.values()) {
-      if (events?.length && !events.includes(event.type)) continue;
-      if (zoneId && zoneId !== event.zoneId) continue;
-      try {
-        listener(event);
-      } catch (err: unknown) {
-        logger.error(`Event listener ${id} failed: ${String(err)}`);
-      }
-    }
-  };
+  let hasConnected = false;
+  let isConnected = false;
+  let isStopping = false;
 
   const client = new Client({
     brokerURL: wsUrl,
-    connectHeaders: {
-      login: buildingId,
-      passcode: token,
+    connectHeaders: { login: buildingId, passcode: '' },
+    reconnectDelay: RECONNECT_DELAY,
+    reconnectTimeMode: ReconnectionTimeMode.EXPONENTIAL,
+    maxReconnectDelay: MAX_RECONNECT_DELAY,
+    connectionTimeout: CONNECTION_TIMEOUT,
+    heartbeatIncoming: HEARTBEAT_INTERVAL,
+    heartbeatOutgoing: HEARTBEAT_INTERVAL,
+    // Do not wait for a closing handshake on a dead connection
+    discardWebsocketOnCommFailure: true,
+    // Must never throw: stompjs would silently stop reconnecting
+    beforeConnect: async (stomp) => {
+      try {
+        stomp.connectHeaders = {
+          login: buildingId,
+          passcode: await getToken(),
+        };
+      } catch (err: unknown) {
+        logger.debug(
+          `WebSocket: could not refresh token, connecting anyway: ${String(err)}`,
+        );
+      }
     },
-    reconnectDelay: 1000,
-    heartbeatIncoming: 20000,
-    heartbeatOutgoing: 20000,
-    onConnect: () => {
-      logger.debug('WebSocket connected');
+    onConnect: (frame) => {
+      logger.debug(
+        `WebSocket heart-beat negotiated: ${frame.headers['heart-beat'] ?? 'none'}`,
+      );
       client.subscribe(`jms.topic.${buildingId}.data`, (message) => {
         let event: HemisEvent;
         try {
@@ -47,30 +66,39 @@ export async function createWsClient({
           return;
         }
         logger.debug(`Event received: ${message.body}`);
-        dispatch(event);
+        onEvent(event);
       });
+      logger.info(
+        hasConnected ? 'WebSocket reconnected' : 'WebSocket connected',
+      );
+      isConnected = true;
+      onConnect({ isReconnect: hasConnected });
+      hasConnected = true;
     },
-    onWebSocketClose: () => {
-      logger.debug('WebSocket closed');
+    onWebSocketClose: (event: { code?: number }) => {
+      if (isStopping) return;
+      if (isConnected) {
+        logger.warn(
+          `WebSocket disconnected (code ${event.code}), reconnecting`,
+        );
+      } else {
+        logger.debug(`WebSocket connection failed (code ${event.code})`);
+      }
+      isConnected = false;
     },
     onStompError: (frame) => {
       logger.error(
-        `Broker reported error: ${frame.headers.message ?? ''} ${frame.body}`,
+        `WebSocket broker error: ${frame.headers.message ?? ''} ${frame.body}`,
       );
+      onStompError();
     },
   });
   client.activate();
 
   return {
-    addListener: (listener: EventListener) => {
-      listeners.set(listener.id, listener);
+    disconnect: async () => {
+      isStopping = true;
+      await client.deactivate();
     },
-    removeListener: ({ id }: Pick<EventListener, 'id'>) => {
-      listeners.delete(id);
-    },
-    updateToken: (newToken: string) => {
-      client.connectHeaders.passcode = newToken;
-    },
-    disconnect: () => client.deactivate(),
   };
 }

@@ -49,5 +49,9 @@ export function createUbiantService() {
     return !!expiry && Date.now() + TOKEN_RENEWAL_MARGIN < expiry;
   };
 
-  return { login, getBuildings, isTokenValid };
+  const reset = () => {
+    token = undefined;
+  };
+
+  return { login, getBuildings, isTokenValid, reset };
 }

@@ -1,4 +1,9 @@
-export { createClient, type FlexomClient } from './client';
+export { createBackoff } from './backoff';
+export {
+  createClient,
+  isInvalidCredentialsError,
+  type FlexomClient,
+} from './client';
 export { FlexomHttpError } from './http';
 export type {
   ActuatorHardwareStateEvent,

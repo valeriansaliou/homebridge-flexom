@@ -29,7 +29,8 @@
     "start": "nodemon",
     "test": "vitest run",
     "test:watch": "vitest",
-    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build"
+    "prepublishOnly": "npm run lint && npm run typecheck && npm test && npm run build",
+    "test:smoke": "node scripts/smoke-test.cjs"
   },
   "keywords": [
     "homebridge-plugin"

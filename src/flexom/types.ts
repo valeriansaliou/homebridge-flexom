@@ -81,4 +81,6 @@ export type EventListener = {
   events?: EventType[];
   zoneId?: string;
   listener: (event: HemisEvent) => void;
+  /** Called after the WebSocket reconnects, as events may have been missed */
+  onReconnect?: () => void;
 };
