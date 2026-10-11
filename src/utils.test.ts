@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FlexomHttpError } from './flexom';
-import { debounce, toLogJson } from './utils';
+import { debounce, formatDuration, toLogJson } from './utils';
 
 describe('toLogJson', () => {
   it('serializes errors, including nested ones', () => {
@@ -45,5 +45,12 @@ describe('debounce', () => {
     expect(fn).not.toHaveBeenCalled();
     vi.advanceTimersByTime(1);
     expect(fn).toHaveBeenCalledExactlyOnceWith(2);
+  });
+});
+
+describe('formatDuration', () => {
+  it('formats seconds and minutes', () => {
+    expect(formatDuration(10_000)).toBe('10s');
+    expect(formatDuration(15 * 60_000)).toBe('15 min');
   });
 });

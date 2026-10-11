@@ -122,52 +122,78 @@ export async function createFlexomZone({
     }
   }
 
+  const onOff = (isOn: boolean) => (isOn ? 'on' : 'off');
+
+  /**
+   * Applies a factor value reported by Flexom. Returns how the local
+   * (HomeKit) state compared to it, for refresh logs.
+   */
   const applyFactor = (
     factor: Flexom.Factor,
     factorValue: number,
     { isRefresh = false } = {},
-  ) => {
+  ): { comparison: string; corrected: boolean } | undefined => {
     switch (factor) {
       case 'BRI': {
-        if (!lightBulb || (isRefresh && isLightCommandSettling())) return;
+        if (!lightBulb) return undefined;
         const wasOn = lightBulb.lightOnService.getValue();
         const isOn = factorValue > 0;
-        if (isRefresh && wasOn !== isOn) {
+        const comparison = `light local=${onOff(wasOn)} remote=${onOff(isOn)}`;
+        if (isRefresh && isLightCommandSettling()) {
+          return {
+            comparison: `${comparison} (command pending)`,
+            corrected: false,
+          };
+        }
+        const corrected = isRefresh && wasOn !== isOn;
+        if (corrected) {
           logger.info(
-            `Light corrected from ${wasOn ? 'on' : 'off'} to ${isOn ? 'on' : 'off'} (missed event)`,
+            `Light corrected from ${onOff(wasOn)} to ${onOff(isOn)} (missed event)`,
           );
         }
         lightBulb.lightOnService.setInternalValue(isOn);
-        break;
+        return { comparison, corrected };
       }
       case 'BRIEXT': {
-        if (!windowCovering) return;
+        if (!windowCovering) return undefined;
         const previous = windowCovering.getPosition();
         const wasMoving = windowCovering.isMoving();
+        const position = toPosition(factorValue);
         windowCovering.reportPosition(
-          toPosition(factorValue),
+          position,
           isRefresh ? 'refresh' : 'event',
         );
         const current = windowCovering.getPosition();
-        if (isRefresh && !wasMoving && current !== previous) {
+        const comparison =
+          `window covering local=${previous}% remote=${position}%` +
+          (wasMoving ? ' (moving)' : '');
+        const corrected = isRefresh && !wasMoving && current !== previous;
+        if (corrected) {
           logger.info(
             `Window covering corrected from ${previous}% to ${current}% (missed event)`,
           );
         }
-        break;
+        return { comparison, corrected };
       }
       default:
+        return undefined;
     }
   };
 
   const refresh = async () => {
     logger.debug('Refreshing state from API');
     settings = await flexom.getZoneSettings(zone);
-    for (const factor of ['BRI', 'BRIEXT'] as const) {
+    const results = (['BRI', 'BRIEXT'] as const).flatMap((factor) => {
       const factorSettings = settings[factor];
-      if (factorSettings) {
+      const result =
+        factorSettings &&
         applyFactor(factor, factorSettings.value, { isRefresh: true });
-      }
+      return result ? [result] : [];
+    });
+    if (results.length && !results.some(({ corrected }) => corrected)) {
+      logger.debug(
+        `State in sync with API: ${results.map(({ comparison }) => comparison).join(', ')}`,
+      );
     }
   };
 

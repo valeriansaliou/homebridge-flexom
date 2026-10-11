@@ -34,5 +34,6 @@
 
 ### Added
 
-- Periodic state refresh from the Flexom API (default every 5 min, configurable,
-  0 to disable) to fix missed events, e.g. a light switched with a wall switch.
+- Periodic state refresh from the Flexom API (default every 15 minutes,
+  configurable in seconds, 0 to disable) to fix missed events, e.g. a light
+  switched with a wall switch.

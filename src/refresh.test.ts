@@ -56,4 +56,23 @@ describe('startPeriodicRefresh', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect(tasks[0].refresh).not.toHaveBeenCalled();
   });
+
+  it('skips ticks while the previous refresh is still running', async () => {
+    const tasks = makeTasks(2);
+    let finish = () => {};
+    tasks[0].refresh.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    startPeriodicRefresh({ tasks, interval: 2000, logger });
+
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(tasks.map((t) => t.refresh.mock.calls.length)).toEqual([1, 0]);
+
+    finish();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(tasks.map((t) => t.refresh.mock.calls.length)).toEqual([1, 1]);
+  });
 });

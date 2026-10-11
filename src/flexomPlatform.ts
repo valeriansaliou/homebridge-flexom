@@ -11,14 +11,14 @@ import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
 import { retryUntilSuccess } from './retry';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { toLogJson } from './utils';
+import { formatDuration, toLogJson } from './utils';
 
 export type FlexomPlatformConfig = PlatformConfig & {
   email: string;
   password: string;
   zones: boolean;
   tolerance: number;
-  /** Minutes between state refreshes from the API, 0 to disable */
+  /** Seconds between state refreshes from the API, 0 to disable */
   refreshInterval?: number;
   excludeZones?: boolean;
   excludedZones?: {
@@ -28,7 +28,7 @@ export type FlexomPlatformConfig = PlatformConfig & {
   }[];
 };
 
-const DEFAULT_REFRESH_INTERVAL = 5; /* min */
+const DEFAULT_REFRESH_INTERVAL = 15 * 60; /* s */
 
 export function createFlexomPlatform({
   logger,
@@ -144,11 +144,13 @@ export function createFlexomPlatform({
     if (shutdown.signal.aborted) return;
     stopRefresh = startPeriodicRefresh({
       tasks,
-      interval: refreshInterval * 60_000,
+      interval: refreshInterval * 1000,
       logger,
     });
     if (refreshInterval > 0) {
-      logger.info(`Refreshing zone states every ${refreshInterval} min`);
+      logger.info(
+        `Refreshing zone states every ${formatDuration(refreshInterval * 1000)}`,
+      );
     }
   };
 

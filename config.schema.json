@@ -39,12 +39,12 @@
         "description": "How far (ratio between 0 and 1) a window covering can stop from its target and still be considered there, as Flexom devices do not always reach the exact requested value (e.g. 0.01 instead of 0 when closed). HomeKit then shows the requested position. Also used to ignore small position jitter."
       },
       "refreshInterval": {
-        "title": "State refresh interval (minutes)",
+        "title": "State refresh interval (seconds)",
         "type": "number",
-        "default": 5,
+        "default": 900,
         "minimum": 0,
-        "maximum": 60,
-        "description": "How often to fetch every zone's state from Flexom, to fix HomeKit when a change was missed (e.g. a light switched on with a wall switch but not reported). Zones are refreshed one at a time across the interval. Set to 0 to disable.",
+        "maximum": 3600,
+        "description": "How often to fetch every zone's state from Flexom, to fix HomeKit when a change was missed (e.g. a light switched on with a wall switch but not reported). Default 900 (15 minutes). Zones are refreshed one at a time across the interval, so short intervals mean frequent API requests (one per second with 10 zones at 10 seconds). Set to 0 to disable.",
         "condition": {
           "functionBody": "return model.zones === true;"
         }

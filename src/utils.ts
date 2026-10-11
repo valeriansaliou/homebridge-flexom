@@ -25,6 +25,10 @@ export function debounce<Args extends unknown[]>(
   };
 }
 
+export function formatDuration(ms: number) {
+  return ms >= 60_000 ? `${ms / 60_000} min` : `${ms / 1000}s`;
+}
+
 function serializeError(err: Error & { code?: unknown; status?: unknown }) {
   return Object.fromEntries(
     Object.entries({

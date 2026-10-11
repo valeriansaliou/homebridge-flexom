@@ -131,15 +131,51 @@ describe('createFlexomZone', () => {
       );
     });
 
-    it('logs nothing when the state is already correct', async () => {
-      const { flexomZone, infoLines } = await setup({
+    it('logs local and remote values at debug when in sync', async () => {
+      const { flexomZone, setApiState, infoLines, logger } = await setup({
         BRI: { value: 1 },
         BRIEXT: { value: 0.5 },
       });
       const before = infoLines().length;
 
+      setApiState({ BRI: { value: 1 }, BRIEXT: { value: 0.52 } });
       await flexomZone.refresh();
       expect(infoLines()).toHaveLength(before);
+      expect(logger.debug).toHaveBeenCalledWith(
+        'State in sync with API: light local=on remote=on, window covering local=50% remote=52%',
+      );
+    });
+
+    it('does not log in sync when correcting', async () => {
+      const { flexomZone, setApiState, logger } = await setup({
+        BRI: { value: 0 },
+      });
+
+      setApiState({ BRI: { value: 1 } });
+      await flexomZone.refresh();
+      expect(logger.debug).not.toHaveBeenCalledWith(
+        expect.stringContaining('State in sync'),
+      );
+    });
+
+    it('marks values not compared in the in sync log', async () => {
+      const { flexomZone, characteristic, logger } = await setup({
+        BRI: { value: 0 },
+        BRIEXT: { value: 0 },
+      });
+      characteristic(hap.Service.Lightbulb, hap.Characteristic.On).setValue(
+        true,
+      );
+      characteristic(
+        hap.Service.WindowCovering,
+        hap.Characteristic.TargetPosition,
+      ).setValue(80);
+      await vi.advanceTimersByTimeAsync(500);
+
+      await flexomZone.refresh();
+      expect(logger.debug).toHaveBeenCalledWith(
+        'State in sync with API: light local=on remote=off (command pending), window covering local=0% remote=0% (moving)',
+      );
     });
 
     it('does not revert a light command that was just sent', async () => {
