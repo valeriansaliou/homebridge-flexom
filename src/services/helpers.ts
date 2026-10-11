@@ -27,7 +27,7 @@ export function bindService<T extends HomeKitValue>({
   service: Service;
   characteristic: WithUUID<new () => Characteristic>;
   initialValue: T;
-  setState: (value: T) => Promise<void>;
+  setState: (value: T) => void | Promise<void>;
   logger: Logger;
 }) {
   let internalValue: T = initialValue;

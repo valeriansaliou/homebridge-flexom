@@ -15,60 +15,51 @@
 
 This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
-## Status
+## Features
 
-Currently, this plugin supports mapping Flexom Zones (i.e. rooms) as Homekit accessories, with light and window covering controls.
+- Flexom Zones (i.e. rooms) appear as HomeKit accessories with light and window covering (rolling shutter) controls.
+- Changes made outside HomeKit (wall switches, Flexom app) are reflected live through the Flexom WebSocket, and every zone is periodically refreshed from the Flexom API in case an event was missed.
+- Recovers on its own from network drops and Flexom API outages, without restarting Homebridge.
+- Nothing is written to the Homebridge log during normal operation (events, commands), sparing Raspberry Pi SD cards. Use Homebridge debug mode (`-D`) to see details.
 
-This plugin relies on [@rsauget/flexom-lib](https://github.com/rsauget/flexom-lib) to interact with Flexom APIs.
+## Requirements
+
+- Node.js 22 or 24
+- Homebridge 1.8 or later (Homebridge 2 supported)
 
 ## Install
 
-The recommended way to install this plugin is through [Homebridge UI](https://github.com/oznu/homebridge-config-ui-x).  
-You will find it easily by searching `@rsauget/homebridge-flexom`.  
+The recommended way to install this plugin is through [Homebridge UI](https://github.com/homebridge/homebridge-config-ui-x).
+You will find it easily by searching `@rsauget/homebridge-flexom`.
 For other installation methods, please refer to the [Homebridge documentation](https://github.com/homebridge/homebridge/wiki).
 
-## Setup Development Environment
+## Configuration
 
-To develop Homebridge plugins you must have Node.js 22 or later installed, and a modern code editor such as [VS Code](https://code.visualstudio.com/). This plugin uses [TypeScript](https://www.typescriptlang.org/) to make development easier and comes with pre-configured settings for [VS Code](https://code.visualstudio.com/) and ESLint. If you are using VS Code install these extensions:
+| Option                          | Default | Description                                                                                              |
+| ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
+| `email`, `password`             |         | Flexom account credentials                                                                               |
+| `zones`                         | `true`  | Expose Flexom Zones as accessories                                                                       |
+| `tolerance`                     | `0.05`  | How far (0-1) a window covering can stop from its target and still be considered there                   |
+| `refreshInterval`               | `5`     | Minutes between state refreshes from the Flexom API, `0` to disable                                      |
+| `excludeZones`, `excludedZones` |         | Disable the light and/or window control of some zones (zone id: accessory serial number in the Home app) |
 
-- [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint)
+## Development
 
-## Install Development Dependencies
+Requires Node.js 22 or later.
 
-Using a terminal, navigate to the project folder and run this command to install the development dependencies:
-
-```
+```sh
 npm install
+npm run lint        # ESLint
+npm run typecheck   # TypeScript
+npm test            # Vitest unit tests
+npm run build       # compile to dist/
+npm run test:smoke  # load the build with the real WebSocket library
 ```
 
-## Build Plugin
+To run the plugin in a local Homebridge that restarts on every change, with its own storage folder (create `config.json` there with a `Flexom` platform, and make sure the bridge port is not used by another instance):
 
-TypeScript needs to be compiled into JavaScript before it can run. The following command will compile the contents of your [`src`](./src) directory and put the resulting code into the `dist` folder.
-
-```
-npm run build
+```sh
+HOMEBRIDGE_STORAGE=~/.homebridge-flexom-dev npm run watch
 ```
 
-## Link To Homebridge
-
-Run this command so your global install of Homebridge can discover the plugin in your development environment:
-
-```
-npm link
-```
-
-You can now start Homebridge, use the `-D` flag so you can see debug log messages in your plugin:
-
-```
-homebridge -D
-```
-
-## Watch For Changes and Build Automatically
-
-If you want to have your code compile automatically as you make changes, and restart Homebridge automatically between changes you can run:
-
-```
-npm run watch
-```
-
-This will launch an instance of Homebridge in debug mode which will restart every time you make a change to the source code. It will load the config stored in the default location under `~/.homebridge`. You may need to stop other running instances of Homebridge while using this command to prevent conflicts. You can adjust the Homebridge startup command in the [`nodemon.json`](./nodemon.json) file.
+Homebridge runs in insecure mode (`-I`), so characteristics can be read and set with `curl` without pairing, using the bridge PIN as `Authorization` header.

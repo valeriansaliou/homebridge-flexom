@@ -1,8 +1,8 @@
 {
   "watch": ["src"],
   "ext": "ts",
-  "ignore": [],
-  "exec": "tsc && homebridge -I -D",
+  "ignore": ["src/**/*.test.ts"],
+  "exec": "tsc -p tsconfig.build.json && homebridge -I -D -P . -U ${HOMEBRIDGE_STORAGE:-$HOME/.homebridge}",
   "signal": "SIGTERM",
   "env": {
     "NODE_OPTIONS": "--trace-warnings"

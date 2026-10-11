@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import type {
   API,
   Logger,
@@ -21,13 +20,12 @@ export type FlexomPlatformConfig = PlatformConfig & {
   tolerance: number;
   /** Minutes between state refreshes from the API, 0 to disable */
   refreshInterval?: number;
-  excludeZones: boolean;
-  excludedZones: {
+  excludeZones?: boolean;
+  excludedZones?: {
     id: string;
     light: boolean;
     window: boolean;
   }[];
-  things: boolean;
 };
 
 const DEFAULT_REFRESH_INTERVAL = 5; /* min */
@@ -66,6 +64,9 @@ export function createFlexomPlatform({
     const accessory =
       existingAccessory ?? new api.platformAccessory(zone.name, uuid);
 
+    const exclusion = config.excludeZones
+      ? config.excludedZones?.find(({ id }) => id === zone.id)
+      : undefined;
     const flexomZone = await createFlexomZone({
       api,
       accessory,
@@ -73,12 +74,7 @@ export function createFlexomPlatform({
       zone,
       flexom: client,
       tolerance: config.tolerance,
-      exclusions: config.excludeZones
-        ? _.pick(_.find(config.excludedZones, { id: zone.id }), [
-            'light',
-            'window',
-          ])
-        : {},
+      exclusions: { light: exclusion?.light, window: exclusion?.window },
     });
 
     if (!flexomZone) {
@@ -132,7 +128,7 @@ export function createFlexomPlatform({
       return;
     }
 
-    if (_.isEmpty(config.email) || _.isEmpty(config.password)) {
+    if (!config.email || !config.password) {
       logger.warn('Flexom email and password are required');
       return;
     }

@@ -36,7 +36,7 @@
         "default": 0.05,
         "minimum": 0,
         "maximum": 1,
-        "description": "Tolerance on factor update between target and actual value (ratio between 0 and 1, default 0.02). Some devices do not always reach requested target value, mainly window devices. For instance, it may be considered closed by Flexom at 0.01 instead of 0."
+        "description": "How far (ratio between 0 and 1) a window covering can stop from its target and still be considered there, as Flexom devices do not always reach the exact requested value (e.g. 0.01 instead of 0 when closed). HomeKit then shows the requested position. Also used to ignore small position jitter."
       },
       "refreshInterval": {
         "title": "State refresh interval (minutes)",
@@ -87,13 +87,6 @@
         "condition": {
           "functionBody": "return model.excludeZones === true;"
         }
-      },
-      "things": {
-        "title": "Show Flexom Things",
-        "type": "boolean",
-        "required": true,
-        "default": false,
-        "description": "CURRENTLY UNSUPPORTED - Flexom Things (i.e. individual devices) will appear as devices with appropriate controls."
       }
     }
   }

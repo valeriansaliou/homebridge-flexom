@@ -16,7 +16,7 @@ export function createLightBulb({
   accessory: PlatformAccessory;
   name: string;
   initialState: boolean;
-  setState: (isOn: boolean) => Promise<void>;
+  setState: (isOn: boolean) => void;
   logger: Logger;
 }) {
   const logger = createChildLogger({ parentLogger, prefix: 'LightBulb' });

@@ -1,4 +1,3 @@
-import _ from 'lodash';
 import type * as Flexom from '../flexom';
 import type { PlatformAccessory, Logger, API } from 'homebridge';
 import { createLightBulb, LightBulb } from '../services/lightBulb';
@@ -6,7 +5,7 @@ import {
   createWindowCovering,
   WindowCovering,
 } from '../services/windowCovering';
-import { createChildLogger, toLogJson } from '../utils';
+import { createChildLogger, debounce, toLogJson } from '../utils';
 
 // Short enough to feel instant, long enough to only send the final value
 // while a HomeKit slider is being dragged
@@ -17,7 +16,7 @@ const COMMAND_SETTLE_DELAY = 15_000; /* ms */
 
 /** Flexom factor (0-1, sometimes slightly off) to a HomeKit position (0-100) */
 function toPosition(factorValue: number) {
-  return _.clamp(Math.round(factorValue * 100), 0, 100);
+  return Math.min(Math.max(Math.round(factorValue * 100), 0), 100);
 }
 
 export type FlexomZone = {
@@ -59,13 +58,15 @@ export async function createFlexomZone({
   let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
 
   const createZoneFactorUpdater = (factor: Flexom.Factor) =>
-    _.debounce(async (value: number) => {
+    debounce((value: number) => {
       logger.debug(`flexom request setZoneFactor ${factor} ${value}`);
-      try {
-        await flexom.setZoneFactor({ id: zone.id, factor, value });
-      } catch (err: unknown) {
-        logger.error(`Failed to set ${factor} to ${value}: ${toLogJson(err)}`);
-      }
+      flexom
+        .setZoneFactor({ id: zone.id, factor, value })
+        .catch((err: unknown) => {
+          logger.error(
+            `Failed to set ${factor} to ${value}: ${toLogJson(err)}`,
+          );
+        });
     }, COMMAND_DELAY);
   const updateZoneBRI = createZoneFactorUpdater('BRI');
   const updateZoneBRIEXT = createZoneFactorUpdater('BRIEXT');
@@ -90,9 +91,9 @@ export async function createFlexomZone({
       accessory,
       name: zone.name,
       initialState: (settings.BRI?.value ?? 0) > 0,
-      setState: async (isOn: boolean) => {
+      setState: (isOn: boolean) => {
         lastLightCommandAt = Date.now();
-        await updateZoneBRI(isOn ? 1 : 0);
+        updateZoneBRI(isOn ? 1 : 0);
       },
     });
   } else {
@@ -112,9 +113,7 @@ export async function createFlexomZone({
       name: zone.name,
       tolerance: tolerance * 100,
       initialPosition: toPosition(settings.BRIEXT?.value ?? 0),
-      sendTarget: (target: number) => {
-        void updateZoneBRIEXT(target / 100);
-      },
+      sendTarget: (target: number) => updateZoneBRIEXT(target / 100),
     });
   } else {
     const service = accessory.getService(api.hap.Service.WindowCovering);

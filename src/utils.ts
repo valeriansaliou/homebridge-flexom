@@ -1,5 +1,3 @@
-import _ from 'lodash';
-
 import type { Logger } from 'homebridge';
 
 export function createChildLogger({
@@ -8,22 +6,34 @@ export function createChildLogger({
 }: {
   parentLogger: Logger;
   prefix: string;
-}) {
-  return _.merge({}, parentLogger, {
-    prefix: _.chain([parentLogger.prefix, prefix]).compact().join(':').value(),
+}): Logger {
+  // Homebridge log methods print `this.prefix`: copy them with a new prefix
+  return Object.assign({}, parentLogger, {
+    prefix: [parentLogger.prefix, prefix].filter(Boolean).join(':'),
   });
 }
 
-function serializeError(err: Error): Record<string, unknown> {
-  return _.omitBy(
-    {
+/** Calls `fn` once calls stopped for `delay` ms, with the last arguments */
+export function debounce<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  delay: number,
+): (...args: Args) => void {
+  let timeout: NodeJS.Timeout | undefined;
+  return (...args) => {
+    clearTimeout(timeout);
+    timeout = setTimeout(() => fn(...args), delay);
+  };
+}
+
+function serializeError(err: Error & { code?: unknown; status?: unknown }) {
+  return Object.fromEntries(
+    Object.entries({
       name: err.name,
       message: err.message,
-      code: _.get(err, 'code'),
-      status: _.get(err, 'status'),
+      code: err.code,
+      status: err.status,
       cause: err.cause,
-    },
-    (v) => v === undefined,
+    }).filter(([, value]) => value !== undefined),
   );
 }
 
