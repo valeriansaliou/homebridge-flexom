@@ -5,11 +5,11 @@ import type {
   PlatformAccessory,
   PlatformConfig,
 } from 'homebridge';
-import * as Flexom from '@rsauget/flexom-lib';
 
 import { createFlexomZone } from './accessories/flexomZone';
+import * as Flexom from './flexom';
 import { PLATFORM_NAME, PLUGIN_NAME } from './settings';
-import { loggerAdapter, toLogJson } from './utils';
+import { toLogJson } from './utils';
 
 export type FlexomPlatformConfig = PlatformConfig & {
   email: string;
@@ -64,7 +64,7 @@ async function setupZone({
   excludedZones: _.Dictionary<FlexomPlatformConfig['excludedZones'][number]>;
   tolerance: number;
   zone: Flexom.Zone;
-  flexom: Flexom.Client;
+  flexom: Flexom.FlexomClient;
   logger: Logger;
   api: API;
 }): Promise<PlatformAccessory | undefined> {
@@ -113,7 +113,7 @@ async function discoverZones({
 }: {
   accessories: Record<string, PlatformAccessory>;
   api: API;
-  flexom: Flexom.Client;
+  flexom: Flexom.FlexomClient;
   logger: Logger;
   config: FlexomPlatformConfig;
 }) {
@@ -170,12 +170,12 @@ export function createFlexomPlatform({
       const flexom = await Flexom.createClient({
         email: config.email,
         password: config.password,
-        logger: loggerAdapter({ logger }),
+        logger,
       });
 
       await discoverZones({ accessories, api, logger, config, flexom });
     } catch (err: unknown) {
-      if (_.get(err, 'response.status') === 401) {
+      if (err instanceof Flexom.FlexomHttpError && err.status === 401) {
         logger.error('Incorrect Flexom email or password');
       } else {
         logger.error(`Flexom initialization error: ${toLogJson(err)}`);

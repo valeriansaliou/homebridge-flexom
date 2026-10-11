@@ -1,5 +1,5 @@
 import _ from 'lodash';
-import * as Flexom from '@rsauget/flexom-lib';
+import type * as Flexom from '../flexom';
 import type { PlatformAccessory, Logger, API } from 'homebridge';
 import { createLightBulb, LightBulb } from '../services/lightBulb';
 import {
@@ -25,7 +25,7 @@ export async function createFlexomZone({
     light: boolean;
     window: boolean;
   }>;
-  flexom: Flexom.Client;
+  flexom: Flexom.FlexomClient;
   zone: Flexom.Zone;
   logger: Logger;
   tolerance: number;
@@ -41,7 +41,7 @@ export async function createFlexomZone({
     ?.setCharacteristic(api.hap.Characteristic.Model, 'Zone')
     .setCharacteristic(api.hap.Characteristic.SerialNumber, zone.id);
 
-  let settings: Flexom.Zone['settings'] = await flexom.getZoneSettings(zone);
+  let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
 
   const refreshZone = _.debounce(async () => {
     logger.debug('flexom request getZone');
@@ -54,8 +54,6 @@ export async function createFlexomZone({
       id: zone.id,
       factor: 'BRI',
       value,
-      tolerance,
-      wait: false,
     });
   }, DEBOUNCE_DELAY);
 
@@ -65,8 +63,6 @@ export async function createFlexomZone({
       id: zone.id,
       factor: 'BRIEXT',
       value,
-      tolerance,
-      wait: false,
     });
   }, DEBOUNCE_DELAY);
 
@@ -87,7 +83,7 @@ export async function createFlexomZone({
       name: zone.name,
       getState: async () => {
         await refreshZone();
-        return settings.BRI.value > 0;
+        return (settings.BRI?.value ?? 0) > 0;
       },
       setState: async (isOn: boolean) => updateZoneBRI(isOn ? 1 : 0),
     });
@@ -109,7 +105,7 @@ export async function createFlexomZone({
       tolerance: tolerance * 100,
       getState: async () => {
         await refreshZone();
-        return settings.BRIEXT.value * 100;
+        return (settings.BRIEXT?.value ?? 0) * 100;
       },
       setState: async (value: number) => updateZoneBRIEXT(value / 100),
     });
@@ -126,6 +122,7 @@ export async function createFlexomZone({
     events: ['ACTUATOR_HARDWARE_STATE'],
     zoneId: zone.id,
     listener: (data) => {
+      if (data.type !== 'ACTUATOR_HARDWARE_STATE') return;
       logger.info(`Received event: ${toLogJson(data)}`);
       switch (data.factorId) {
         case 'BRI': {
