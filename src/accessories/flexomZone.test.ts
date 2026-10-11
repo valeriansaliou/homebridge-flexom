@@ -30,6 +30,16 @@ function createFakeFlexom(initialSettings: ZoneSettings) {
       settings = newSettings;
     },
     reconnect: () => listeners.forEach((l) => l.onReconnect?.()),
+    sendEvent: (factorId: 'BRI' | 'BRIEXT', value: number) =>
+      listeners.forEach((l) =>
+        l.listener({
+          type: 'ACTUATOR_HARDWARE_STATE',
+          timestamp: Date.now(),
+          zoneId: zone.id,
+          factorId,
+          value: { value },
+        }),
+      ),
   };
 }
 
@@ -53,7 +63,16 @@ async function setup(settings: ZoneSettings) {
     type: Parameters<hap.Service['getCharacteristic']>[0],
   ) => accessory.getService(service)!.getCharacteristic(type)!;
   const infoLines = () => logger.info.mock.calls.map(([line]) => line);
-  return { ...fake, flexomZone: flexomZone!, characteristic, infoLines };
+  const hapWarnings = vi.fn();
+  accessory.on('characteristic-warning' as never, hapWarnings);
+  return {
+    ...fake,
+    flexomZone: flexomZone!,
+    characteristic,
+    infoLines,
+    logger,
+    hapWarnings,
+  };
 }
 
 describe('createFlexomZone', () => {
@@ -155,6 +174,104 @@ describe('createFlexomZone', () => {
 
       const on = characteristic(hap.Service.Lightbulb, hap.Characteristic.On);
       expect(on.value).toBe(true);
+    });
+  });
+
+  // Homebridge writes every info/warn/error line and HAP warning to its log
+  // file: these paths must stay silent to spare the Raspberry Pi SD card.
+  describe('disk writes', () => {
+    const expectNoLogWrites = ({
+      logger,
+      hapWarnings,
+    }: Awaited<ReturnType<typeof setup>>) => {
+      expect(logger.info).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+      expect(logger.error).not.toHaveBeenCalled();
+      expect(hapWarnings).not.toHaveBeenCalled();
+    };
+
+    const setupSilently = async () => {
+      const zoneSetup = await setup({
+        BRI: { value: 0 },
+        BRIEXT: { value: 0 },
+      });
+      zoneSetup.logger.info.mockClear(); // startup lines are fine
+      return zoneSetup;
+    };
+
+    it('logs nothing when receiving WebSocket events', async () => {
+      const zoneSetup = await setupSilently();
+      const { CurrentPosition } = hap.Characteristic;
+
+      zoneSetup.sendEvent('BRI', 1);
+      zoneSetup.sendEvent('BRIEXT', 0.07);
+      zoneSetup.sendEvent('BRIEXT', 0.07);
+      const service = hap.Service.WindowCovering;
+      expect(zoneSetup.characteristic(service, CurrentPosition).value).toBe(7);
+
+      // Flexom values can be slightly out of range, which HAP would warn about
+      zoneSetup.sendEvent('BRIEXT', 1.02);
+      expect(zoneSetup.characteristic(service, CurrentPosition).value).toBe(
+        100,
+      );
+      expectNoLogWrites(zoneSetup);
+    });
+
+    it('logs nothing when sending HomeKit commands', async () => {
+      const zoneSetup = await setupSilently();
+      const { client, characteristic } = zoneSetup;
+
+      characteristic(hap.Service.Lightbulb, hap.Characteristic.On).setValue(
+        true,
+      );
+      characteristic(
+        hap.Service.WindowCovering,
+        hap.Characteristic.TargetPosition,
+      ).setValue(37);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(client.setZoneFactor).toHaveBeenCalledWith({
+        id: zone.id,
+        factor: 'BRI',
+        value: 1,
+      });
+      expect(client.setZoneFactor).toHaveBeenCalledWith({
+        id: zone.id,
+        factor: 'BRIEXT',
+        value: 0.37,
+      });
+      expectNoLogWrites(zoneSetup);
+    });
+
+    it('answers HomeKit reads from memory, without API calls or logs', async () => {
+      const zoneSetup = await setupSilently();
+      zoneSetup.client.getZoneSettings.mockClear();
+
+      await zoneSetup
+        .characteristic(hap.Service.Lightbulb, hap.Characteristic.On)
+        .handleGetRequest();
+      await zoneSetup
+        .characteristic(
+          hap.Service.WindowCovering,
+          hap.Characteristic.CurrentPosition,
+        )
+        .handleGetRequest();
+      await vi.advanceTimersByTimeAsync(5000);
+
+      expect(zoneSetup.client.getZoneSettings).not.toHaveBeenCalled();
+      expectNoLogWrites(zoneSetup);
+    });
+
+    it('logs a single error when a command fails', async () => {
+      const zoneSetup = await setupSilently();
+      zoneSetup.client.setZoneFactor.mockRejectedValue(new Error('HTTP 503'));
+
+      zoneSetup
+        .characteristic(hap.Service.Lightbulb, hap.Characteristic.On)
+        .setValue(true);
+      await vi.advanceTimersByTimeAsync(1000);
+
+      expect(zoneSetup.logger.error).toHaveBeenCalledTimes(1);
     });
   });
 });

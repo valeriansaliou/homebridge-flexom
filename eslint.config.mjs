@@ -19,6 +19,11 @@ export default tseslint.config(
     },
   },
   {
+    // expect(mock.method) is not an unbound call
+    files: ['**/*.test.ts'],
+    rules: { '@typescript-eslint/unbound-method': 'off' },
+  },
+  {
     files: ['**/*.mjs', '**/*.cjs'],
     extends: [tseslint.configs.disableTypeChecked],
     languageOptions: { globals: globals.node },

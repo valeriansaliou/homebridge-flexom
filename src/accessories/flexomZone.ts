@@ -12,6 +12,11 @@ const DEBOUNCE_DELAY = 1000; /* ms */
 // Refreshing right after a command could revert HomeKit to the previous state
 const COMMAND_SETTLE_DELAY = 15_000; /* ms */
 
+/** Flexom factor (0-1, sometimes slightly off) to a HomeKit position (0-100) */
+function toPosition(factorValue: number) {
+  return _.clamp(Math.round(factorValue * 100), 0, 100);
+}
+
 export type FlexomZone = {
   /** Fetches the zone state from the API and fixes HomeKit if it drifted */
   refresh: () => Promise<void>;
@@ -50,28 +55,17 @@ export async function createFlexomZone({
 
   let settings: Flexom.ZoneSettings = await flexom.getZoneSettings(zone);
 
-  const refreshZone = _.debounce(async () => {
-    logger.debug('flexom request getZone');
-    settings = await flexom.getZoneSettings(zone);
-  }, DEBOUNCE_DELAY);
-
-  const updateZoneBRI = _.debounce(async (value: number) => {
-    logger.debug(`flexom request setZoneFactor BRI ${value}`);
-    return flexom.setZoneFactor({
-      id: zone.id,
-      factor: 'BRI',
-      value,
-    });
-  }, DEBOUNCE_DELAY);
-
-  const updateZoneBRIEXT = _.debounce(async (value: number) => {
-    logger.debug(`flexom request setZoneFactor BRIEXT ${value}`);
-    return flexom.setZoneFactor({
-      id: zone.id,
-      factor: 'BRIEXT',
-      value,
-    });
-  }, DEBOUNCE_DELAY);
+  const createZoneFactorUpdater = (factor: Flexom.Factor) =>
+    _.debounce(async (value: number) => {
+      logger.debug(`flexom request setZoneFactor ${factor} ${value}`);
+      try {
+        await flexom.setZoneFactor({ id: zone.id, factor, value });
+      } catch (err: unknown) {
+        logger.error(`Failed to set ${factor} to ${value}: ${toLogJson(err)}`);
+      }
+    }, DEBOUNCE_DELAY);
+  const updateZoneBRI = createZoneFactorUpdater('BRI');
+  const updateZoneBRIEXT = createZoneFactorUpdater('BRIEXT');
 
   const isLightEnabled = settings.BRI && !exclusions.light;
   const isWindowEnabled = settings.BRIEXT && !exclusions.window;
@@ -87,18 +81,15 @@ export async function createFlexomZone({
   let lightBulb: LightBulb;
   if (isLightEnabled) {
     logger.info('Create light bulb');
-    lightBulb = await createLightBulb({
+    lightBulb = createLightBulb({
       api,
       logger,
       accessory,
       name: zone.name,
-      getState: async () => {
-        await refreshZone();
-        return (settings.BRI?.value ?? 0) > 0;
-      },
+      initialState: (settings.BRI?.value ?? 0) > 0,
       setState: async (isOn: boolean) => {
         lastCommandAt = Date.now();
-        return updateZoneBRI(isOn ? 1 : 0);
+        await updateZoneBRI(isOn ? 1 : 0);
       },
     });
   } else {
@@ -111,19 +102,16 @@ export async function createFlexomZone({
   let windowCovering: WindowCovering;
   if (isWindowEnabled) {
     logger.info('Create window covering');
-    windowCovering = await createWindowCovering({
+    windowCovering = createWindowCovering({
       api,
       logger,
       accessory,
       name: zone.name,
       tolerance: tolerance * 100,
-      getState: async () => {
-        await refreshZone();
-        return (settings.BRIEXT?.value ?? 0) * 100;
-      },
+      initialPosition: toPosition(settings.BRIEXT?.value ?? 0),
       setState: async (value: number) => {
         lastCommandAt = Date.now();
-        return updateZoneBRIEXT(value / 100);
+        await updateZoneBRIEXT(value / 100);
       },
     });
   } else {
@@ -156,7 +144,7 @@ export async function createFlexomZone({
         if (!windowCovering) return;
         const positionState = windowCovering.positionStateService.getValue();
         const previous = windowCovering.currentPositionService.getValue();
-        const value = Math.round(factorValue * 100);
+        const value = toPosition(factorValue);
         if (isRefresh && Math.abs(previous - value) > tolerance * 100) {
           logger.info(
             `Window covering corrected from ${previous}% to ${value}% (missed event)`,
@@ -196,7 +184,6 @@ export async function createFlexomZone({
     zoneId: zone.id,
     listener: (data) => {
       if (data.type !== 'ACTUATOR_HARDWARE_STATE') return;
-      logger.info(`Received event: ${toLogJson(data)}`);
       applyFactor(data.factorId, data.value.value);
     },
     // Events may have been missed while the WebSocket was down

@@ -12,14 +12,14 @@ type PositionState =
   | typeof Characteristic.PositionState.DECREASING
   | typeof Characteristic.PositionState.STOPPED;
 
-export type WindowCovering = Awaited<ReturnType<typeof createWindowCovering>>;
+export type WindowCovering = ReturnType<typeof createWindowCovering>;
 
-export async function createWindowCovering({
+export function createWindowCovering({
   api,
   accessory,
   name,
   tolerance,
-  getState,
+  initialPosition,
   setState,
   logger: parentLogger,
 }: {
@@ -27,8 +27,8 @@ export async function createWindowCovering({
   accessory: PlatformAccessory;
   name: string;
   tolerance: number;
-  getState: () => Promise<number>;
-  setState: (targetPosition: number) => Promise<void | { aborted: boolean }>;
+  initialPosition: number;
+  setState: (targetPosition: number) => Promise<void>;
   logger: Logger;
 }) {
   const logger = createChildLogger({ parentLogger, prefix: 'WindowCovering' });
@@ -37,20 +37,19 @@ export async function createWindowCovering({
     accessory.addService(api.hap.Service.WindowCovering);
   service.setCharacteristic(api.hap.Characteristic.Name, name);
 
-  const currentPositionService = await bindService<number>({
+  const currentPositionService = bindService<number>({
     hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.CurrentPosition,
-    initialValue: await getState(),
-    getState,
+    initialValue: initialPosition,
     logger,
   });
 
-  const targetPositionService = await bindService<number>({
+  const targetPositionService = bindService<number>({
     hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.TargetPosition,
-    initialValue: currentPositionService.getValue(),
+    initialValue: initialPosition,
     setState,
     logger,
   });
@@ -74,7 +73,7 @@ export async function createWindowCovering({
     return DECREASING;
   };
 
-  const positionStateService = await bindService<PositionState>({
+  const positionStateService = bindService<PositionState>({
     hap: api.hap,
     service,
     characteristic: api.hap.Characteristic.PositionState,

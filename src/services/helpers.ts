@@ -10,26 +10,26 @@ import { toLogJson } from '../utils';
 
 type HomeKitValue = boolean | number;
 
-type CharacteristicGetter<T> = () => T | Promise<T>;
-type CharacteristicSetter<T> = (
-  value: T,
-) => Promise<void | { aborted: boolean }>;
-type CharacteristicListener<T> = (value: T) => Promise<void>;
+type CharacteristicListener<T> = (value: T) => void;
 
-type CharacteristicService<T extends HomeKitValue = HomeKitValue> = {
+export type CharacteristicService<T extends HomeKitValue = HomeKitValue> = {
   getValue: () => T;
-  setValue: (newValue: T) => Promise<void>;
   setInternalValue: (newValue: T) => void;
-  refreshValue: () => Promise<void>;
+  refreshValue: () => void;
   onValue: (listener: CharacteristicListener<T>) => void;
 };
 
-export async function bindService<T extends HomeKitValue>({
+/**
+ * Binds a HomeKit characteristic to an in-memory value. HomeKit reads are
+ * answered from memory, which WebSocket events and periodic refreshes keep
+ * up to date: they never hit the API, and nothing is logged above debug.
+ */
+export function bindService<T extends HomeKitValue>({
   hap,
   service,
   characteristic,
-  getState,
   initialValue,
+  getState,
   setState,
   logger,
   dependencies = [],
@@ -38,74 +38,54 @@ export async function bindService<T extends HomeKitValue>({
   service: Service;
   characteristic: WithUUID<new () => Characteristic>;
   initialValue: T;
-  getState?: CharacteristicGetter<T>;
-  setState?: CharacteristicSetter<T>;
+  /** Derives the value from other characteristics (see `dependencies`) */
+  getState?: () => T;
+  setState?: (value: T) => Promise<void>;
   logger: Logger;
+  /** Characteristics whose HomeKit updates trigger `refreshValue` */
   dependencies?: Array<Pick<CharacteristicService, 'onValue'>>;
-}): Promise<CharacteristicService<T>> {
+}): CharacteristicService<T> {
   const listeners: Array<CharacteristicListener<T>> = [];
 
   let internalValue: T = initialValue;
+  service.updateCharacteristic(characteristic, internalValue);
 
   const setInternalValue = (newValue: T) => {
-    service.updateCharacteristic(characteristic, newValue);
-    if (internalValue === newValue) {
-      logger.debug(`state unchanged (current: ${internalValue})`);
-    } else {
-      logger.info(`changed from ${internalValue} to ${newValue}`);
+    if (internalValue !== newValue) {
+      logger.debug(`changed from ${internalValue} to ${newValue}`);
     }
     internalValue = newValue;
+    service.updateCharacteristic(characteristic, newValue);
   };
 
-  const refreshValue = async () => {
-    if (!getState) return;
-    logger.debug(`refresh state (current: ${internalValue})`);
-    const newValue = await getState();
-    setInternalValue(newValue);
+  const refreshValue = () => {
+    if (getState) setInternalValue(getState());
   };
 
-  const setValue = async (newValue: T) => {
-    const result = await setState?.(newValue);
-    if (result?.aborted) {
-      logger.info('update aborted');
-      await refreshValue();
-      return;
-    }
-    setInternalValue(newValue);
-    await Promise.all(listeners.map((listener) => listener(newValue)));
-  };
+  service.getCharacteristic(characteristic).onGet(() => internalValue);
 
-  await refreshValue();
+  if (setState) {
+    service
+      .getCharacteristic(characteristic)
+      .onSet(async (newValue: CharacteristicValue) => {
+        logger.debug(`homekit set state ${JSON.stringify(newValue)}`);
+        try {
+          await setState(newValue as T);
+        } catch (err: unknown) {
+          logger.error(`failed to reach target state: ${toLogJson(err)}`);
+          throw new hap.HapStatusError(
+            hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
+          );
+        }
+        setInternalValue(newValue as T);
+        listeners.forEach((listener) => listener(newValue as T));
+      });
+  }
 
-  service.getCharacteristic(characteristic).onGet(() => {
-    logger.debug(`homekit get state ${internalValue}`);
-    refreshValue().catch((err: unknown) => {
-      logger.error(`failed to refresh state: ${toLogJson(err)}`);
-    });
-    return internalValue;
-  });
-
-  service
-    .getCharacteristic(characteristic)
-    .onSet(async (newValue: CharacteristicValue) => {
-      logger.debug(`homekit set state ${JSON.stringify(newValue)}`);
-      try {
-        await setValue(newValue as T);
-      } catch (err: unknown) {
-        logger.error(`failed to reach target state: ${toLogJson(err)}`);
-        throw new hap.HapStatusError(
-          hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE,
-        );
-      }
-    });
-
-  dependencies.forEach((dependency) =>
-    dependency.onValue(() => refreshValue()),
-  );
+  dependencies.forEach((dependency) => dependency.onValue(refreshValue));
 
   return {
     getValue: () => internalValue,
-    setValue,
     setInternalValue,
     refreshValue,
     onValue: (listener: CharacteristicListener<T>) => {
