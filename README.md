@@ -1,19 +1,8 @@
-<p align="center">
-
-<img src="https://github.com/homebridge/branding/raw/master/logos/homebridge-wordmark-logo-vertical.png" width="150">
-
-</p>
-
 # Homebridge Flexom plugin
 
-[![verified-by-homebridge](https://badgen.net/badge/homebridge/verified/purple)](https://github.com/homebridge/homebridge/wiki/Verified-Plugins)
-[![Downloads](https://img.shields.io/npm/dt/@rsauget/homebridge-flexom)](https://www.npmjs.com/package/@rsauget/homebridge-flexom)
-[![Version](https://img.shields.io/npm/v/@rsauget/homebridge-flexom)](https://www.npmjs.com/package/@rsauget/homebridge-flexom)
-[![GitHub issues](https://img.shields.io/github/issues/rsauget/homebridge-flexom)](https://github.com/rsauget/homebridge-flexom/issues)
-[![GitHub pull requests](https://img.shields.io/github/issues-pr/rsauget/homebridge-flexom)](https://github.com/rsauget/homebridge-flexom/pulls)
-[![GitHub Workflow Status](https://img.shields.io/github/workflow/status/rsauget/homebridge-flexom/Build%20and%20Lint)](https://github.com/rsauget/homebridge-flexom)
-
 This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
+
+⚠️  *T*his is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebridge-flexom) containing improvements for venetian blinds, WebSocket connectivity, and other fixes.**
 
 ## Features
 
