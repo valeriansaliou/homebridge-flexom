@@ -20,9 +20,11 @@ This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
 ## Install
 
-The recommended way to install this plugin is through [Homebridge UI](https://github.com/homebridge/homebridge-config-ui-x).
-You will find it easily by searching `@rsauget/homebridge-flexom`.
-For other installation methods, please refer to the [Homebridge documentation](https://github.com/homebridge/homebridge/wiki).
+- Build the `tgz` archive locally
+- Copy it to your Homebridge server in `/tmp`
+- Enter `hb-shell`
+- Run: `npm install /tmp/[archive_name].tgz`
+- Restart Homebridge to reload the plugin
 
 ## Configuration
 
