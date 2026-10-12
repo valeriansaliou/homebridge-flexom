@@ -4,6 +4,8 @@ import {
   type Actuator,
   type Factor,
   type HemisUser,
+  type Sensor,
+  type Thing,
   type Zone,
   type ZoneSettings,
 } from './types';
@@ -104,6 +106,20 @@ export function createHemisService({
     });
   };
 
+  /** Sensors of all devices, or of one zone, with their last readings */
+  const getSensors = ({ zoneId }: { zoneId?: string } = {}) =>
+    request<Sensor[]>({
+      path: zoneId
+        ? `/intelligent-things/sensors?zoneId=${encodeURIComponent(zoneId)}`
+        : '/intelligent-things/sensors',
+    });
+
+  /** A device, with its health as tracked by Flexom */
+  const getThing = ({ itId }: { itId: string }) =>
+    request<Thing>({
+      path: `/intelligent-things/${encodeURIComponent(itId)}`,
+    });
+
   return {
     login,
     getZones,
@@ -111,5 +127,7 @@ export function createHemisService({
     setZoneFactor,
     getFactorActuators,
     setActuatorState,
+    getSensors,
+    getThing,
   };
 }

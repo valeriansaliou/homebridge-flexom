@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Temperature, humidity and smoke sensors are exposed in HomeKit, one
+  accessory per device (e.g. "Corridor Smoke Detector" for a connected smoke
+  detector measuring all three), with the device's battery level and low
+  battery warning. Readings follow Flexom sensor events and the periodic
+  refresh. HomeKit notifies you when smoke is detected. Set `sensors` to
+  `false`, or exclude a zone's sensors, to hide them.
+- A sensor device Flexom lost contact with is flagged as faulty and inactive
+  in HomeKit, and shows "No response" in the Home app, until it reports again.
+
 ## 4.0.0 (2026-10-11)
 
 ### Breaking changes

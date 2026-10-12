@@ -7,6 +7,13 @@ export type Logger = {
 
 export type Factor = 'BRI' | 'BRIEXT' | 'TMP';
 
+/**
+ * What a sensor measures. Known ones: TMP (°C), HUM (%), SMOKE (0 or 1),
+ * BATTERY_LEVEL (0-1). Flexom has many more (switch presses, power...).
+ */
+export type SensorFactor =
+  'TMP' | 'HUM' | 'SMOKE' | 'BATTERY_LEVEL' | (string & {});
+
 export const MASTER_ZONE_ID = 'MyHemis';
 
 export type FactorSettings = {
@@ -46,6 +53,39 @@ export type HemisUser = {
   token: string;
 };
 
+/** Health of a device, as tracked by Flexom (KO: stopped reporting) */
+export type ThingState =
+  | 'OK'
+  | 'PAIRED'
+  | 'UNKNOWN'
+  | 'KO'
+  | 'UNREACHABLE'
+  | 'MUTE'
+  | 'NOT_NEEDED'
+  | (string & {});
+
+/** A device (intelligent thing) */
+export type Thing = {
+  id: string;
+  name?: string;
+  state?: ThingState | null;
+};
+
+/** A sensor channel of a device (intelligent thing), with its last reading */
+export type Sensor = {
+  /** Channel id, e.g. "81000e9d#4_C4" */
+  id: string;
+  /** Device owning the sensor */
+  itId: string;
+  state?: {
+    id: SensorFactor;
+    /** Flexom reports readings as strings, e.g. "23.0" */
+    value: string | number | null;
+    timestamp?: number;
+  } | null;
+  activated?: boolean;
+};
+
 export type EventType =
   | 'ACTUATOR_TARGET_STATE'
   | 'ACTUATOR_HARDWARE_STATE'
@@ -82,13 +122,27 @@ export type Actuator = {
   hardwareState?: { value: number | null } | null;
 };
 
+/** New reading of a sensor channel */
+export type SensorStateEvent = {
+  type: 'SENSOR_STATE';
+  timestamp: number;
+  zoneId?: string;
+  itId?: string;
+  sensorId?: string;
+  factorId?: SensorFactor;
+  /** A number, or a string like "0" depending on the factor */
+  value?: unknown;
+};
+
 export type HemisEvent =
   | ActuatorHardwareStateEvent
+  | SensorStateEvent
   | {
-      type: Exclude<EventType, 'ACTUATOR_HARDWARE_STATE'>;
+      type: Exclude<EventType, 'ACTUATOR_HARDWARE_STATE' | 'SENSOR_STATE'>;
       timestamp: number;
       zoneId?: string;
-      factorId?: Factor;
+      itId?: string;
+      factorId?: string;
       value?: unknown;
     };
 

@@ -38,6 +38,15 @@
           "functionBody": "return model.zones === true;"
         }
       },
+      "sensors": {
+        "title": "Show sensors",
+        "type": "boolean",
+        "default": true,
+        "description": "Expose temperature, humidity and smoke sensors (e.g. a connected smoke detector) as HomeKit accessories, one per device, with its battery level. HomeKit sends a notification when smoke is detected.",
+        "condition": {
+          "functionBody": "return model.zones === true;"
+        }
+      },
       "tolerance": {
         "title": "Factor value tolerance",
         "type": "number",
@@ -90,6 +99,11 @@
               "type": "boolean",
               "required": true,
               "default": true
+            },
+            "sensors": {
+              "title": "Disable sensors for this Zone",
+              "type": "boolean",
+              "default": false
             }
           }
         },

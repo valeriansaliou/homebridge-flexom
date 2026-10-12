@@ -12,6 +12,7 @@ import {
   type ZoneAccessoryContext,
 } from './accessories/flexomZone';
 import { canRemoveAccessory, findMissingRoles } from './accessories/roles';
+import { createZoneSensors } from './accessories/sensors';
 import { markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
@@ -23,6 +24,8 @@ export type FlexomPlatformConfig = PlatformConfig & {
   email: string;
   password: string;
   zones: boolean;
+  /** Expose temperature, humidity and smoke sensors (default true) */
+  sensors?: boolean;
   tolerance: number;
   /** One accessory for the light and one for the window covering */
   separateAccessories?: boolean;
@@ -33,6 +36,7 @@ export type FlexomPlatformConfig = PlatformConfig & {
     id: string;
     light: boolean;
     window: boolean;
+    sensors?: boolean;
   }[];
 };
 
@@ -85,7 +89,11 @@ export function createFlexomPlatform({
     const exclusion = config.excludeZones
       ? config.excludedZones?.find(({ id }) => id === zone.id)
       : undefined;
-    const exclusions = { light: exclusion?.light, window: exclusion?.window };
+    const exclusions = {
+      light: exclusion?.light,
+      window: exclusion?.window,
+      sensors: config.sensors === false || exclusion?.sensors,
+    };
     const data = await loadZoneData({ flexom: client, zone, exclusions });
 
     // Flexom sometimes answers with partial data: wait for it to report
@@ -107,10 +115,19 @@ export function createFlexomPlatform({
       );
     }
 
+    const getAccessory = ({
+      uuid,
+      name,
+      category,
+    }: {
+      uuid: string;
+      name: string;
+      category?: number;
+    }) =>
+      accessories.get(uuid) ?? new api.platformAccessory(name, uuid, category);
     const flexomZone = await createFlexomZone({
       api,
-      getAccessory: ({ uuid, name }) =>
-        accessories.get(uuid) ?? new api.platformAccessory(name, uuid),
+      getAccessory,
       separateAccessories: config.separateAccessories ?? true,
       logger,
       zone,
@@ -118,8 +135,19 @@ export function createFlexomPlatform({
       tolerance: getTolerance(config.tolerance),
       data,
     });
+    const zoneSensors = await createZoneSensors({
+      api,
+      getAccessory,
+      logger,
+      zone,
+      flexom: client,
+      devices: data.sensorDevices,
+    });
 
-    const used = new Set(flexomZone?.accessories);
+    const used = new Set([
+      ...(flexomZone?.accessories ?? []),
+      ...(zoneSensors?.accessories ?? []),
+    ]);
     for (const accessory of zoneAccessories.filter((a) => !used.has(a))) {
       if (
         canRemoveAccessory({
@@ -151,7 +179,16 @@ export function createFlexomPlatform({
         accessories.set(accessory.UUID, accessory);
       }
     }
-    return flexomZone && { name: zone.name, refresh: flexomZone.refresh };
+    const refreshes = [flexomZone?.refresh, zoneSensors?.refresh].filter(
+      (refresh): refresh is () => Promise<void> => !!refresh,
+    );
+    if (refreshes.length === 0) return undefined;
+    return {
+      name: zone.name,
+      refresh: async () => {
+        await Promise.all(refreshes.map((refresh) => refresh()));
+      },
+    };
   };
 
   const discoverZones = async (client: Flexom.FlexomClient) => {

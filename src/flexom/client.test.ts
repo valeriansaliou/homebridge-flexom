@@ -151,6 +151,16 @@ function mockFlexomApi({
         ]);
       case 'PUT /api/intelligent-things/io%3A%25%251002%2542/actuator/42_C0/state':
         return new Response(null, { status: 204 });
+      case 'GET /api/intelligent-things/0410A5CA995880':
+        return json({ id: '0410A5CA995880', state: 'KO' });
+      case 'GET /api/intelligent-things/sensors':
+        return json([
+          {
+            id: '81000e9d#4_C4',
+            itId: '0410A5CA995880',
+            state: { id: 'TMP', value: '23.0' },
+          },
+        ]);
       default:
         return new Response('not found', { status: 404 });
     }
@@ -268,6 +278,32 @@ describe('Flexom client', () => {
       url: 'https://hemis.example/api/intelligent-things/io%3A%25%251002%2542/actuator/42_C0/state',
       body: '{"value":0.25}',
       headers: { 'Content-Type': 'application/json' },
+    });
+  });
+
+  it('lists the sensors of a zone', async () => {
+    const api = mockFlexomApi();
+    const flexom = createClient(credentials);
+
+    await expect(flexom.getSensors({ zoneId: 'zone-1' })).resolves.toEqual([
+      {
+        id: '81000e9d#4_C4',
+        itId: '0410A5CA995880',
+        state: { id: 'TMP', value: '23.0' },
+      },
+    ]);
+    expect(api.calls.at(-1)?.url).toBe(
+      'https://hemis.example/api/intelligent-things/sensors?zoneId=zone-1',
+    );
+  });
+
+  it('reads the health of a device', async () => {
+    mockFlexomApi();
+    const flexom = createClient(credentials);
+
+    await expect(flexom.getThing({ itId: '0410A5CA995880' })).resolves.toEqual({
+      id: '0410A5CA995880',
+      state: 'KO',
     });
   });
 

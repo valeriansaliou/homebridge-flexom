@@ -10,6 +10,11 @@ export type {
   ActuatorHardwareStateEvent,
   Factor,
   HemisEvent,
+  Sensor,
+  SensorFactor,
+  SensorStateEvent,
+  Thing,
+  ThingState,
   Zone,
   ZoneSettings,
 } from './types';

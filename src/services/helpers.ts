@@ -62,3 +62,44 @@ export function bindService<T extends HomeKitValue>({
     setInternalValue,
   };
 }
+
+/**
+ * Binds a read-only HomeKit characteristic (a sensor reading) to an
+ * in-memory value, kept up to date by WebSocket events and refreshes.
+ */
+export function bindReadOnly<T extends HomeKitValue>({
+  hap,
+  service,
+  characteristic,
+  initialValue,
+  isAvailable = () => true,
+  logger,
+}: {
+  hap: HAP;
+  service: Service;
+  characteristic: WithUUID<new () => Characteristic>;
+  initialValue: T;
+  /** When false, reads fail and HomeKit shows "No response" */
+  isAvailable?: () => boolean;
+  logger: Logger;
+}) {
+  let internalValue: T = initialValue;
+  service.updateCharacteristic(characteristic, internalValue);
+  service.getCharacteristic(characteristic).onGet(() => {
+    if (!isAvailable()) {
+      throw new hap.HapStatusError(hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+    }
+    return internalValue;
+  });
+
+  return {
+    getValue: () => internalValue,
+    setInternalValue: (newValue: T) => {
+      if (internalValue !== newValue) {
+        logger.debug(`changed from ${internalValue} to ${newValue}`);
+      }
+      internalValue = newValue;
+      service.updateCharacteristic(characteristic, newValue);
+    },
+  };
+}

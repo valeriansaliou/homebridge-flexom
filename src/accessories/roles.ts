@@ -1,7 +1,8 @@
 /**
  * What an accessory controls: `light` and `window` (all lights or window
- * coverings of a zone, driven together), or `light:<device id>` and
- * `window:<device id>` (one light or window covering).
+ * coverings of a zone, driven together), `light:<device id>` and
+ * `window:<device id>` (one light or window covering), or
+ * `sensor:<device id>` (the sensors of one device).
  * Stored in the accessory context, so a later startup can tell whether
  * Flexom stopped reporting something HomeKit knows about.
  */
@@ -17,17 +18,32 @@ export function getBlindRole({ itId }: { itId?: string }): Role {
   return itId ? `window:${itId}` : 'window';
 }
 
-/** `light` or `window`, whether zone-wide or for one device */
+export const SENSOR_ROLE: Role = 'sensor';
+
+export function getSensorRole({ itId }: { itId: string }): Role {
+  return `${SENSOR_ROLE}:${itId}`;
+}
+
+/** `light`, `window` or `sensor`, whether zone-wide or for one device */
 function getKind(role: Role) {
   return role.split(':')[0];
 }
 
-export type Exclusions = Partial<{ light: boolean; window: boolean }>;
+export type Exclusions = Partial<{
+  light: boolean;
+  window: boolean;
+  sensors: boolean;
+}>;
 
 function isExcluded(role: Role, exclusions: Exclusions) {
-  return getKind(role) === LIGHT_ROLE
-    ? !!exclusions.light
-    : !!exclusions.window;
+  switch (getKind(role)) {
+    case LIGHT_ROLE:
+      return !!exclusions.light;
+    case SENSOR_ROLE:
+      return !!exclusions.sensors;
+    default:
+      return !!exclusions.window;
+  }
 }
 
 /**

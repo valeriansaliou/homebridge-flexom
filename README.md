@@ -14,6 +14,7 @@ This is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebr
 - Automatic recovery from network drops, WebSocket disconnections and Flexom API outages, without restarting Homebridge.
 - Accessories are never removed from HomeKit because Flexom temporarily reported incomplete data, preserving their rooms, scenes and automations.
 - Nothing is written to the log during normal operation, sparing Raspberry Pi SD cards; HomeKit reads are answered from memory.
+- Temperature, humidity and smoke sensors (e.g. a connected smoke detector) appear in HomeKit, with their battery level, and HomeKit notifies you when smoke is detected.
 - Built-in Flexom client replacing `@rsauget/flexom-lib`, with `@stomp/stompjs` as the only runtime dependency.
 - Modernized toolchain: Node.js 22/24, Homebridge 2 support, TypeScript 6, ESLint 10, Vitest, and a test suite.
 
@@ -25,6 +26,8 @@ Upgrading from the original plugin is easy: the package is still named `@rsauget
 
 - Flexom Zones (i.e. rooms) appear in HomeKit as light and window covering accessories, with one accessory per light, roller shutter or venetian blind.
 - Venetian blinds: closing fully also closes the slats (dark room); any other position opens them, to see outside.
+- Temperature, humidity and smoke sensors appear as one accessory per device (e.g. "Corridor Smoke Detector" for a connected smoke detector measuring all three), showing its battery level. The Home app sends a notification when smoke is detected, like for any HomeKit smoke sensor: check that notifications are enabled in the accessory settings of the Home app.
+- A sensor device Flexom lost contact with (e.g. a smoke detector that stopped reporting) is flagged as faulty and inactive, and shows "No response" in the Home app, until it reports again.
 - Changes made outside HomeKit (wall switches, Flexom app) are reflected live through the Flexom WebSocket, and every zone is periodically refreshed from the Flexom API in case an event was missed.
 - Recovers on its own from network drops and Flexom API outages, without restarting Homebridge.
 - Never removes an accessory from HomeKit because Flexom stopped reporting it (only configuration changes do), so an API glitch cannot wipe your rooms, scenes and automations. To remove the accessory of a device you removed from Flexom, use "Remove Single Cached Accessory" in the Homebridge UI settings.
@@ -45,13 +48,14 @@ Upgrading from the original plugin is easy: the package is still named `@rsauget
 
 ## Configuration
 
-| Option                          | Default | Description                                                                                              |
-| ------------------------------- | ------- | -------------------------------------------------------------------------------------------------------- |
-| `email`, `password`             |         | Flexom account credentials                                                                               |
-| `zones`                         | `true`  | Expose Flexom Zones as accessories                                                                       |
-| `tolerance`                     | `0.05`  | How far (0-1) a window covering can stop from its target and still be considered there                   |
-| `refreshInterval`               | `5`     | Minutes between state refreshes from the Flexom API, `0` to disable                                      |
-| `excludeZones`, `excludedZones` |         | Disable the light and/or window control of some zones (zone id: accessory serial number in the Home app) |
+| Option                          | Default | Description                                                                                                                               |
+| ------------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `email`, `password`             |         | Flexom account credentials                                                                                                                |
+| `zones`                         | `true`  | Expose Flexom Zones as accessories                                                                                                        |
+| `sensors`                       | `true`  | Expose temperature, humidity and smoke sensors as accessories                                                                             |
+| `tolerance`                     | `0.05`  | How far (0-1) a window covering can stop from its target and still be considered there                                                    |
+| `refreshInterval`               | `5`     | Minutes between state refreshes from the Flexom API, `0` to disable                                                                       |
+| `excludeZones`, `excludedZones` |         | Disable the light, window control and/or sensors of some zones (zone id: serial number of the light or shutter accessory in the Home app) |
 
 ## Development
 

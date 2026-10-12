@@ -4,6 +4,7 @@ import {
   findMissingRoles,
   getBlindRole,
   getLightRole,
+  getSensorRole,
   LIGHT_ROLE,
 } from './roles';
 
@@ -11,6 +12,7 @@ const blind1 = getBlindRole({ itId: 'io:1' });
 const blind2 = getBlindRole({ itId: 'io:2' });
 const light1 = getLightRole({ itId: 'light-1' });
 const light2 = getLightRole({ itId: 'light-2' });
+const sensor1 = getSensorRole({ itId: 'detector-1' });
 
 describe('findMissingRoles', () => {
   it('finds roles Flexom stopped reporting', () => {
@@ -113,5 +115,44 @@ describe('canRemoveAccessory', () => {
         exclusions: {},
       }),
     ).toBe(true);
+  });
+});
+
+describe('sensor roles', () => {
+  it('reports a sensor device Flexom stopped listing as missing', () => {
+    expect(
+      findMissingRoles({
+        knownRoles: [light1, sensor1],
+        reportedRoles: [light1],
+        exclusions: {},
+      }),
+    ).toEqual([sensor1]);
+  });
+
+  it('ignores sensors when they are excluded', () => {
+    expect(
+      findMissingRoles({
+        knownRoles: [sensor1],
+        reportedRoles: [],
+        exclusions: { sensors: true },
+      }),
+    ).toEqual([]);
+    expect(
+      canRemoveAccessory({
+        roles: [sensor1],
+        reportedRoles: [],
+        exclusions: { sensors: true },
+      }),
+    ).toBe(true);
+  });
+
+  it('keeps a sensor accessory Flexom stopped listing', () => {
+    expect(
+      canRemoveAccessory({
+        roles: [sensor1],
+        reportedRoles: [light1],
+        exclusions: { light: true, window: true },
+      }),
+    ).toBe(false);
   });
 });

@@ -17,9 +17,15 @@ import { getLightValue, toLights, ZONE_LIGHT, type Light } from './lights';
 import {
   getBlindRole,
   getLightRole,
+  getSensorRole,
   type Exclusions,
   type Role,
 } from './roles';
+import {
+  loadDeviceStates,
+  toSensorDevices,
+  type SensorDevice,
+} from './sensors';
 
 // Delays before sending a command, so only the last value is sent. Lights
 // only merge quick toggles. The Home app sends window covering positions
@@ -45,6 +51,8 @@ export type FlexomZone = {
 export type GetAccessory = (params: {
   uuid: string;
   name: string;
+  /** HomeKit category of a new accessory, OTHER by default */
+  category?: number;
 }) => PlatformAccessory;
 
 /** Accessory context, persisted by Homebridge in its accessory cache */
@@ -81,6 +89,8 @@ export type ZoneData = {
   blindActuators: Flexom.Actuator[];
   lights: Light[];
   blinds: Blind[];
+  /** Devices with temperature, humidity or smoke sensors */
+  sensorDevices: SensorDevice[];
   /** Controls the zone exposes; empty when it has none (e.g. "Ma Maison") */
   roles: Role[];
 };
@@ -123,13 +133,26 @@ export async function loadZoneData({
     if (blinds.length === 0) blinds = [ZONE_BLIND];
   }
 
+  // Environment sensors are listed per device, not through the zone factors
+  const sensorDevices = exclusions.sensors
+    ? []
+    : await loadDeviceStates({
+        flexom,
+        devices: toSensorDevices(await flexom.getSensors({ zoneId: zone.id })),
+      });
+
   return {
     settings,
     lightActuators,
     blindActuators,
     lights,
     blinds,
-    roles: [...lights.map(getLightRole), ...blinds.map(getBlindRole)],
+    sensorDevices,
+    roles: [
+      ...lights.map(getLightRole),
+      ...blinds.map(getBlindRole),
+      ...sensorDevices.map(getSensorRole),
+    ],
   };
 }
 

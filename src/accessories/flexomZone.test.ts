@@ -43,6 +43,10 @@ function createFakeFlexom(
       listeners.push(listener);
       return Promise.resolve();
     }),
+    getSensors: vi.fn(() => Promise.resolve([])),
+    getThing: vi.fn(({ itId }: { itId: string }) =>
+      Promise.resolve({ id: itId, state: 'OK' }),
+    ),
   };
   return {
     client,

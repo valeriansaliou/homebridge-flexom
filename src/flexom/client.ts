@@ -206,6 +206,14 @@ export function createClient({
       (h, params: Parameters<HemisService['setActuatorState']>[0]) =>
         h.setActuatorState(params),
     ),
+    getSensors: withSession(
+      (h, params?: Parameters<HemisService['getSensors']>[0]) =>
+        h.getSensors(params),
+    ),
+    getThing: withSession(
+      (h, params: Parameters<HemisService['getThing']>[0]) =>
+        h.getThing(params),
+    ),
     subscribe,
     unsubscribe,
     disconnect,
