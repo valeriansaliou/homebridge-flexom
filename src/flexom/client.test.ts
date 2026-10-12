@@ -456,6 +456,52 @@ describe('Flexom client', () => {
       expect(received).toEqual([event]);
     });
 
+    it('drops event types nobody listens to, without parsing or logging them', async () => {
+      mockFlexomApi();
+      const { ws, received } = await subscribe(createClient(credentials));
+      const parse = vi.spyOn(JSON, 'parse');
+      logger.debug.mockClear();
+
+      // Hemis re-publishes every zone target several times a second
+      ws.deliver({
+        type: 'FACTOR_TARGET_STATE',
+        zoneId: 'zone-1',
+        factorId: 'BRI',
+        value: 1,
+      });
+      expect(parse).not.toHaveBeenCalled();
+      expect(logger.debug).not.toHaveBeenCalled();
+      expect(received).toEqual([]);
+
+      const wanted = {
+        type: 'ACTUATOR_HARDWARE_STATE',
+        zoneId: 'zone-1',
+        factorId: 'BRI',
+        value: { value: 1 },
+      };
+      ws.deliver(wanted);
+      expect(received).toEqual([wanted]);
+      expect(logger.debug).toHaveBeenCalledWith(
+        `Event received: ${JSON.stringify(wanted)}`,
+      );
+      parse.mockRestore();
+    });
+
+    it('parses every event while a listener has no type filter', async () => {
+      mockFlexomApi();
+      const flexom = createClient(credentials);
+      const { ws } = await subscribe(flexom);
+      const all: HemisEvent[] = [];
+      await flexom.subscribe({
+        id: 'all',
+        listener: (event) => all.push(event),
+      });
+
+      const event = { type: 'FACTOR_TARGET_STATE', zoneId: 'zone-1' };
+      ws.deliver(event);
+      expect(all).toEqual([event]);
+    });
+
     it('notifies subscribers on reconnect, not on first connect', async () => {
       mockFlexomApi();
       const { ws, onReconnect } = await subscribe(createClient(credentials));

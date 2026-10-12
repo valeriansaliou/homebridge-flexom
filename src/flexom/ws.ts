@@ -1,14 +1,20 @@
-import type { HemisEvent, Logger } from './types';
+import type { EventType, HemisEvent, Logger } from './types';
 
 const RECONNECT_DELAY = 1000; /* ms */
 const MAX_RECONNECT_DELAY = 60_000; /* ms */
 const CONNECTION_TIMEOUT = 15_000; /* ms */
 const HEARTBEAT_INTERVAL = 20_000; /* ms */
 
+/** Event type of a raw event, read cheaply without parsing the JSON */
+export function getEventType(body: string): EventType | undefined {
+  return /"type"\s*:\s*"([A-Z_]+)"/.exec(body)?.[1] as EventType | undefined;
+}
+
 export async function createWsClient({
   wsUrl,
   buildingId,
   getToken,
+  isWanted,
   onEvent,
   onConnect,
   onStompError,
@@ -17,6 +23,8 @@ export async function createWsClient({
   wsUrl: string;
   buildingId: string;
   getToken: () => Promise<string>;
+  /** Whether anyone listens to this event type; others are dropped unparsed */
+  isWanted: (type: EventType) => boolean;
   onEvent: (event: HemisEvent) => void;
   onConnect: (event: { isReconnect: boolean }) => void;
   onStompError: () => void;
@@ -58,6 +66,10 @@ export async function createWsClient({
         `WebSocket heart-beat negotiated: ${frame.headers['heart-beat'] ?? 'none'}`,
       );
       client.subscribe(`jms.topic.${buildingId}.data`, (message) => {
+        // Hemis floods the topic (e.g. every zone target several times a
+        // second): drop what nobody listens to, without parsing or logging
+        const type = getEventType(message.body);
+        if (type && !isWanted(type)) return;
         let event: HemisEvent;
         try {
           event = JSON.parse(message.body) as HemisEvent;

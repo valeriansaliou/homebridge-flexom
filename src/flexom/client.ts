@@ -4,6 +4,7 @@ import { FlexomHttpError } from './http';
 import type {
   Building,
   EventListener,
+  EventType,
   HemisEvent,
   Logger,
   UbiantUser,
@@ -129,6 +130,12 @@ export function createClient({
     };
   }
 
+  /** Whether a listener wants this event type (all of them, if unfiltered) */
+  const isWanted = (type: EventType) =>
+    [...listeners.values()].some(
+      ({ events }) => !events?.length || events.includes(type),
+    );
+
   const dispatch = (event: HemisEvent) => {
     for (const { id, events, zoneId, listener } of listeners.values()) {
       if (events?.length && !events.includes(event.type)) continue;
@@ -157,6 +164,7 @@ export function createClient({
       wsUrl: connectedBuilding.hemis_stomp_url,
       buildingId: connectedBuilding.buildingId,
       getToken: async () => (await getSession()).hemisToken,
+      isWanted,
       onEvent: dispatch,
       onConnect: ({ isReconnect }) => {
         if (isReconnect) notifyReconnect();
