@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `liveUpdates` option (enabled by default). When disabled, the plugin never
+  connects to the Flexom WebSocket, and only the periodic refresh reports
+  changes made outside HomeKit, smoke detection included: lower
+  `refreshInterval` accordingly. Window coverings then show the requested
+  position as soon as it is sent.
+
 ## 4.1.2 (2026-10-12)
 
 ### Fixed

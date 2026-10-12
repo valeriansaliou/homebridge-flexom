@@ -429,6 +429,17 @@ describe('Flexom client', () => {
       return { received, onReconnect, ws: stomp.instances[0] };
     };
 
+    it('never connects when the WebSocket is disabled', async () => {
+      const api = mockFlexomApi();
+      const flexom = createClient({ ...credentials, webSocket: false });
+      const listener = vi.fn();
+
+      await flexom.subscribe({ id: 'test', listener });
+      expect(stomp.instances).toHaveLength(0);
+      expect(api.calls).toHaveLength(0);
+      await expect(flexom.getZones()).resolves.toHaveLength(2);
+    });
+
     it('connects with the building id and Hemis token', async () => {
       mockFlexomApi();
       const { ws } = await subscribe(createClient(credentials));

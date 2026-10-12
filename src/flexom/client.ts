@@ -40,10 +40,13 @@ export type FlexomClient = ReturnType<typeof createClient>;
 export function createClient({
   email,
   password,
+  webSocket = true,
   logger,
 }: {
   email: string;
   password: string;
+  /** Whether to receive events; when false, subscribing does nothing */
+  webSocket?: boolean;
   logger: Logger;
 }) {
   const ubiant = createUbiantService();
@@ -177,6 +180,7 @@ export function createClient({
   };
 
   const subscribe = async (listener: EventListener) => {
+    if (!webSocket) return;
     listeners.set(listener.id, listener);
     wsClient ??= connectWebSocket().catch((err: unknown) => {
       wsClient = undefined;

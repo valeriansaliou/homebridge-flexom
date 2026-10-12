@@ -26,6 +26,11 @@ export type FlexomPlatformConfig = PlatformConfig & {
   zones: boolean;
   /** Expose temperature, humidity and smoke sensors (default true) */
   sensors?: boolean;
+  /**
+   * Follow changes live through the Flexom WebSocket (default true). When
+   * false, only the periodic refresh reports changes made outside HomeKit.
+   */
+  liveUpdates?: boolean;
   tolerance: number;
   /** One accessory for the light and one for the window covering */
   separateAccessories?: boolean;
@@ -133,6 +138,7 @@ export function createFlexomPlatform({
       zone,
       flexom: client,
       tolerance: getTolerance(config.tolerance),
+      liveUpdates: config.liveUpdates !== false,
       data,
     });
     const zoneSensors = await createZoneSensors({
@@ -258,14 +264,31 @@ export function createFlexomPlatform({
       return;
     }
 
+    const liveUpdates = config.liveUpdates !== false;
+    const refreshInterval = config.refreshInterval ?? DEFAULT_REFRESH_INTERVAL;
+    if (!liveUpdates) {
+      logger.info('Live updates disabled: not connecting to the WebSocket');
+      if (refreshInterval <= 0) {
+        logger.warn(
+          'Live updates and refreshes are both disabled: changes made ' +
+            'outside HomeKit will not show up until Homebridge restarts',
+        );
+      } else if (config.sensors !== false) {
+        logger.warn(
+          'Live updates disabled: smoke is only detected when a zone is ' +
+            `refreshed, up to ${formatDuration(refreshInterval * 1000)} late`,
+        );
+      }
+    }
+
     flexom = Flexom.createClient({
       email: config.email,
       password: config.password,
+      webSocket: liveUpdates,
       logger,
     });
     const tasks = await discoverZones(flexom);
 
-    const refreshInterval = config.refreshInterval ?? DEFAULT_REFRESH_INTERVAL;
     if (shutdown.signal.aborted) return;
     stopRefresh = startPeriodicRefresh({
       tasks,

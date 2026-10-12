@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createWindowCoveringController } from './windowCoveringController';
 
-function setup(initialPosition = 0) {
+function setup(initialPosition = 0, { hasPositionEvents = true } = {}) {
   const sendTarget = vi.fn();
   const onChange = vi.fn();
   const controller = createWindowCoveringController({
     initialPosition,
     tolerance: 5,
+    hasPositionEvents,
     sendTarget,
     onChange,
   });
@@ -164,6 +165,40 @@ describe('createWindowCoveringController', () => {
 
       controller.reportPosition(80, 'refresh');
       expect(state()).toEqual({ current: 80, target: 80, movement: 'stopped' });
+    });
+  });
+
+  describe('without position events (refreshes only)', () => {
+    const untracked = (initialPosition: number) =>
+      setup(initialPosition, { hasPositionEvents: false });
+
+    it('shows the target as reached right away', () => {
+      const { controller, sendTarget, state } = untracked(0);
+
+      controller.setTarget(80);
+      expect(sendTarget).toHaveBeenCalledWith(80);
+      expect(state()).toEqual({ current: 80, target: 80, movement: 'stopped' });
+      // Unlike with events, it does not give up on the target
+      vi.advanceTimersByTime(60_000);
+      expect(state()).toEqual({ current: 80, target: 80, movement: 'stopped' });
+    });
+
+    it('ignores refreshes while the shutter may still be moving', () => {
+      const { controller, state } = untracked(0);
+      controller.setTarget(80);
+
+      vi.advanceTimersByTime(20_000);
+      controller.reportPosition(30, 'refresh');
+      expect(state()).toEqual({ current: 80, target: 80, movement: 'stopped' });
+    });
+
+    it('corrects the position on a later refresh if it stopped elsewhere', () => {
+      const { controller, state } = untracked(0);
+      controller.setTarget(80);
+
+      vi.advanceTimersByTime(120_000);
+      controller.reportPosition(60, 'refresh');
+      expect(state()).toEqual({ current: 60, target: 60, movement: 'stopped' });
     });
   });
 

@@ -67,6 +67,15 @@
           "functionBody": "return model.zones === true;"
         }
       },
+      "liveUpdates": {
+        "title": "Live updates",
+        "type": "boolean",
+        "default": true,
+        "description": "Follow changes made outside HomeKit (wall switches, Flexom app, smoke detection) live through the Flexom WebSocket. When disabled, no WebSocket connection is made and only the periodic state refresh reports them, so they show up in HomeKit up to one refresh interval late (smoke detection included): lower the refresh interval accordingly. Window coverings then show the requested position as soon as it is sent, instead of their movement.",
+        "condition": {
+          "functionBody": "return model.zones === true;"
+        }
+      },
       "excludeZones": {
         "title": "Exclude some zones",
         "type": "boolean",

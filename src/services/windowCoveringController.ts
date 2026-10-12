@@ -6,6 +6,10 @@ const SETTLE_DELAY = 30_000; /* ms */
 // is given up on, so HomeKit does not wait for a target that will never come.
 // Includes the 3s the command waits for a slider drag to end before it is sent.
 const START_TIMEOUT = 13_000; /* ms */
+// Without position events, how long a commanded shutter may still be moving:
+// a refresh in the meantime would show it halfway. Includes the 3s the
+// command waits for a slider drag to end before it is sent.
+const UNTRACKED_MOVE_DELAY = 90_000; /* ms */
 
 export type Movement = 'increasing' | 'decreasing' | 'stopped';
 
@@ -19,17 +23,22 @@ export type WindowCoveringState = {
 
 /**
  * Tracks a window covering's HomeKit state from commands and position
- * reports, which Flexom sends repeatedly while a shutter moves.
+ * reports, which Flexom sends repeatedly while a shutter moves. Without
+ * position events, a command is shown as reached right away, and the
+ * periodic refresh corrects it if the shutter stopped elsewhere.
  */
 export function createWindowCoveringController({
   initialPosition,
   tolerance,
+  hasPositionEvents = true,
   sendTarget,
   onChange,
 }: {
   initialPosition: number;
   /** Positions this close (0-100 scale) are considered equal */
   tolerance: number;
+  /** Whether Flexom reports positions while moving (WebSocket events) */
+  hasPositionEvents?: boolean;
   sendTarget: (target: number) => void;
   onChange: (state: WindowCoveringState) => void;
 }) {
@@ -41,6 +50,8 @@ export function createWindowCoveringController({
   // Set while moving towards a target requested from HomeKit
   let pendingTarget: number | undefined;
   let settleTimer: NodeJS.Timeout | undefined;
+  // When the last command was sent, without position events
+  let untrackedCommandAt = 0;
 
   const update = (patch: Partial<WindowCoveringState>) => {
     const next = { ...state, ...patch };
@@ -80,6 +91,11 @@ export function createWindowCoveringController({
   /** HomeKit asks for a new position; Flexom changes course right away */
   const setTarget = (target: number) => {
     sendTarget(target);
+    if (!hasPositionEvents) {
+      untrackedCommandAt = Date.now();
+      arrive(target);
+      return;
+    }
     if (isClose(state.current, target)) {
       arrive(target);
       return;
@@ -94,6 +110,9 @@ export function createWindowCoveringController({
    * `refresh` when periodically polled from the API.
    */
   const reportPosition = (position: number, source: 'event' | 'refresh') => {
+    if (Date.now() - untrackedCommandAt < UNTRACKED_MOVE_DELAY) {
+      return; // possibly still on its way to the commanded target
+    }
     if (pendingTarget !== undefined) {
       if (isClose(position, pendingTarget)) {
         arrive(pendingTarget);

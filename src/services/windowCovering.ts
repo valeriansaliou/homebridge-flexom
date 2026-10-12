@@ -19,6 +19,7 @@ export function createWindowCovering({
   name,
   tolerance,
   initialPosition,
+  hasPositionEvents,
   sendTarget,
   logger: parentLogger,
 }: {
@@ -30,6 +31,8 @@ export function createWindowCovering({
   /** Positions this close (0-100 scale) are considered equal */
   tolerance: number;
   initialPosition: number;
+  /** Whether Flexom reports positions while moving (WebSocket events) */
+  hasPositionEvents?: boolean;
   sendTarget: (target: number) => void;
   logger: Logger;
 }) {
@@ -51,6 +54,7 @@ export function createWindowCovering({
   const controller = createWindowCoveringController({
     initialPosition,
     tolerance,
+    hasPositionEvents,
     sendTarget,
     onChange: ({ current, target, movement }) => {
       logger.debug(`current ${current}, target ${target}, ${movement}`);

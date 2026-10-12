@@ -29,6 +29,7 @@ Upgrading from the original plugin is easy: the package is still named `@rsauget
 - Temperature, humidity and smoke sensors appear as one accessory per device (e.g. "Corridor Smoke Detector" for a connected smoke detector measuring all three), showing its battery level. The Home app sends a notification when smoke is detected, like for any HomeKit smoke sensor: check that notifications are enabled in the accessory settings of the Home app.
 - A sensor device Flexom lost contact with (e.g. a smoke detector that stopped reporting) is flagged as faulty and inactive, and shows "No response" in the Home app, until it reports again.
 - Changes made outside HomeKit (wall switches, Flexom app) are reflected live through the Flexom WebSocket, and every zone is periodically refreshed from the Flexom API in case an event was missed.
+- Live updates can be turned off (`liveUpdates: false`) to never connect to the Flexom WebSocket, e.g. when Flexom floods it with events. Changes made outside HomeKit then show up at the next periodic refresh, smoke detection included: lower `refreshInterval` accordingly. Window coverings show the requested position as soon as it is sent.
 - Recovers on its own from network drops and Flexom API outages, without restarting Homebridge.
 - Never removes an accessory from HomeKit because Flexom stopped reporting it (only configuration changes do), so an API glitch cannot wipe your rooms, scenes and automations. To remove the accessory of a device you removed from Flexom, use "Remove Single Cached Accessory" in the Homebridge UI settings.
 - Nothing is written to the Homebridge log during normal operation (events, commands), sparing Raspberry Pi SD cards. Use Homebridge debug mode (`-D`) to see details.
@@ -54,7 +55,8 @@ Upgrading from the original plugin is easy: the package is still named `@rsauget
 | `zones`                         | `true`  | Expose Flexom Zones as accessories                                                                                                        |
 | `sensors`                       | `true`  | Expose temperature, humidity and smoke sensors as accessories                                                                             |
 | `tolerance`                     | `0.05`  | How far (0-1) a window covering can stop from its target and still be considered there                                                    |
-| `refreshInterval`               | `5`     | Minutes between state refreshes from the Flexom API, `0` to disable                                                                       |
+| `refreshInterval`               | `900`   | Seconds between state refreshes from the Flexom API, `0` to disable                                                                       |
+| `liveUpdates`                   | `true`  | Follow changes live through the Flexom WebSocket; when `false`, only refreshes report them (see below)                                    |
 | `excludeZones`, `excludedZones` |         | Disable the light, window control and/or sensors of some zones (zone id: serial number of the light or shutter accessory in the Home app) |
 
 ## Development

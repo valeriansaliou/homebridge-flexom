@@ -164,6 +164,7 @@ export async function createFlexomZone({
   flexom,
   zone,
   tolerance,
+  liveUpdates = true,
   logger: parentLogger,
 }: {
   api: API;
@@ -177,6 +178,8 @@ export async function createFlexomZone({
   zone: Flexom.Zone;
   logger: Logger;
   tolerance: number;
+  /** Whether WebSocket events report changes, or only refreshes do */
+  liveUpdates?: boolean;
 }): Promise<FlexomZone | undefined> {
   const logger = createChildLogger({ parentLogger, prefix: zone.name });
   const { lights, blinds } = data;
@@ -398,6 +401,7 @@ export async function createFlexomZone({
         name,
         tolerance: tolerance * 100,
         initialPosition: getRemotePosition(blind) ?? 0,
+        hasPositionEvents: liveUpdates,
         sendTarget: send,
       });
       const label = isSingleBlind
