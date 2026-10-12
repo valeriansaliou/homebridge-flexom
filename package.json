@@ -1,6 +1,6 @@
 {
   "displayName": "Flexom",
-  "name": "@rsauget/homebridge-flexom",
+  "name": "@valeriansaliou/homebridge-flexom",
   "version": "4.0.0",
   "description": "Control Flexom devices with Homekit.",
   "author": {
@@ -9,10 +9,10 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "git://github.com/rsauget/homebridge-flexom.git"
+    "url": "git://github.com/valeriansaliou/homebridge-flexom.git"
   },
   "bugs": {
-    "url": "https://github.com/rsauget/homebridge-flexom/issues"
+    "url": "https://github.com/valeriansaliou/homebridge-flexom/issues"
   },
   "engines": {
     "node": "^22.12.0 || ^24.0.0",
@@ -54,12 +54,6 @@
   "dependencies": {
     "@stomp/stompjs": "^7.4.0"
   },
-  "funding": [
-    {
-      "type": "paypal",
-      "url": "https://paypal.me/rsauget1"
-    }
-  ],
   "files": [
     "dist",
     "config.schema.json"

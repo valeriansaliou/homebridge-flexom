@@ -6,4 +6,4 @@ export const PLATFORM_NAME = 'Flexom';
 /**
  * This must match the name of your plugin as defined the package.json
  */
-export const PLUGIN_NAME = '@rsauget/homebridge-flexom';
+export const PLUGIN_NAME = '@valeriansaliou/homebridge-flexom';
