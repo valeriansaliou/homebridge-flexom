@@ -1,7 +1,7 @@
 {
   "displayName": "Flexom",
   "name": "@rsauget/homebridge-flexom",
-  "version": "4.1.0",
+  "version": "4.1.1",
   "description": "Control Flexom devices with Homekit.",
   "author": {
     "name": "Raphaël Sauget"

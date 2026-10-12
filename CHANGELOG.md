@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.1 (2026-10-12)
+
+### Fixed
+
+- WebSocket events of a type nothing listens to (Flexom re-publishes every
+  zone target several times a second) are dropped before being parsed, and
+  no longer appear in the debug log.
+
 ## 4.1.0 (2026-10-12)
 
 ### Added
