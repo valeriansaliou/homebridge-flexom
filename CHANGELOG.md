@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.1.2 (2026-10-12)
+
+### Fixed
+
+- Sensor accessories (e.g. a smoke detector) no longer show "No response" in
+  the Home app after Homebridge restarts: their fault, activity, low battery
+  and charging status kept failing HomeKit reads once loaded from the cache.
+
 ## 4.1.1 (2026-10-12)
 
 ### Fixed
