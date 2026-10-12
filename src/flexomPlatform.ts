@@ -13,7 +13,7 @@ import {
 } from './accessories/flexomZone';
 import { canRemoveAccessory, findMissingRoles } from './accessories/roles';
 import { createZoneSensors } from './accessories/sensors';
-import { markUnavailable } from './accessories/unavailable';
+import { markAvailable, markUnavailable } from './accessories/unavailable';
 import * as Flexom from './flexom';
 import { startPeriodicRefresh, type RefreshTask } from './refresh';
 import { retryUntilSuccess } from './retry';
@@ -168,6 +168,7 @@ export function createFlexomPlatform({
     }
 
     for (const accessory of used) {
+      markAvailable(accessory);
       if (accessories.has(accessory.UUID)) {
         logger.info(`Update accessory: ${accessory.displayName}`);
         api.updatePlatformAccessories([accessory]);

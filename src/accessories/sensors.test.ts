@@ -16,6 +16,7 @@ import {
   toSensorDevices,
 } from './sensors';
 import type { ZoneAccessoryContext } from './flexomZone';
+import { markAvailable, markUnavailable } from './unavailable';
 
 const zone = { id: 'zone-1', name: 'Corridor' };
 const DETECTOR = '0410A5CA995880';
@@ -315,6 +316,49 @@ describe('createZoneSensors', () => {
     expect(zoneSensors?.accessories).toEqual([cached]);
     expect(service(Service.HumiditySensor)).toBeUndefined();
     expect(service(Service.Battery)).toBeDefined();
+  });
+
+  it('answers every read of a cached accessory once set up again', async () => {
+    const api = createTestApi();
+    const cached = createTestAccessory(
+      'Corridor Smoke Detector',
+      getSensorAccessoryUuid(api, zone, { itId: DETECTOR }),
+    );
+    // As cached by a previous run, with the status characteristics it set
+    for (const type of [Service.SmokeSensor, Service.Battery]) {
+      const cachedService = cached.addService(type);
+      cachedService.getCharacteristic(Characteristic.StatusLowBattery);
+      if (type !== Service.Battery) {
+        cachedService.getCharacteristic(Characteristic.StatusActive);
+        cachedService.getCharacteristic(Characteristic.StatusFault);
+      }
+    }
+    // Homebridge restarts: "No response" until the zone is set up
+    markUnavailable({ api, accessory: cached });
+    await expect(
+      cached
+        .getService(Service.SmokeSensor)!
+        .getCharacteristic(Characteristic.StatusActive)
+        .handleGetRequest(),
+    ).rejects.toBe(hap.HAPStatus.SERVICE_COMMUNICATION_FAILURE);
+
+    const { read } = await setup(detectorSensors(), { cached: [cached] });
+    markAvailable(cached);
+    await expect(
+      read(Service.SmokeSensor, Characteristic.SmokeDetected),
+    ).resolves.toBe(Characteristic.SmokeDetected.SMOKE_NOT_DETECTED);
+    await expect(
+      read(Service.SmokeSensor, Characteristic.StatusActive),
+    ).resolves.toBe(true);
+    await expect(
+      read(Service.SmokeSensor, Characteristic.StatusFault),
+    ).resolves.toBe(Characteristic.StatusFault.NO_FAULT);
+    await expect(
+      read(Service.SmokeSensor, Characteristic.StatusLowBattery),
+    ).resolves.toBe(Characteristic.StatusLowBattery.BATTERY_LEVEL_NORMAL);
+    await expect(
+      read(Service.Battery, Characteristic.ChargingState),
+    ).resolves.toBe(Characteristic.ChargingState.NOT_CHARGEABLE);
   });
 
   it('follows readings pushed by Flexom', async () => {
