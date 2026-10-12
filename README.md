@@ -2,7 +2,24 @@
 
 This Homebridge plugin exposes Flexom smart homes to Apple HomeKit.
 
-⚠️  **This is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebridge-flexom) containing improvements for venetian blinds, WebSocket connectivity, and other fixes.**
+## This is a forked library!
+
+This is a fork of [@rsauget/homebridge-flexom](https://github.com/rsauget/homebridge-flexom). Changes made since the fork:
+
+- One HomeKit accessory per device: each light, roller shutter and venetian blind of a zone is driven and read on its own, instead of the whole zone at once.
+- Lights and window coverings are separate accessories, so each can have its own name and room (`separateAccessories` option).
+- Venetian blinds show their actual position (they used to average position and slat orientation, e.g. 50% when fully open), and closing fully also closes the slats.
+- Window coverings stay in sync with HomeKit: the target is kept while moving, moves from wall switches and the Flexom app are followed, and commands are only sent once the Home app slider is released.
+- Zone states are periodically refreshed from the Flexom API, in case a WebSocket event was missed.
+- Automatic recovery from network drops, WebSocket disconnections and Flexom API outages, without restarting Homebridge.
+- Accessories are never removed from HomeKit because Flexom temporarily reported incomplete data, preserving their rooms, scenes and automations.
+- Nothing is written to the log during normal operation, sparing Raspberry Pi SD cards; HomeKit reads are answered from memory.
+- Built-in Flexom client replacing `@rsauget/flexom-lib`, with `@stomp/stompjs` as the only runtime dependency.
+- Modernized toolchain: Node.js 22/24, Homebridge 2 support, TypeScript 6, ESLint 10, Vitest, and a test suite.
+
+See the [changelog](CHANGELOG.md) for details.
+
+Upgrading from the original plugin is easy: the package is still named `@rsauget/homebridge-flexom`, so installing this fork over it keeps your Homebridge configuration and your HomeKit setup (rooms, scenes, automations).
 
 ## Features
 
