@@ -83,10 +83,12 @@ async function setup(
     separateAccessories = true,
     cached = [],
     actuators = [],
+    liveUpdates,
   }: {
     separateAccessories?: boolean;
     cached?: PlatformAccessory[];
     actuators?: Actuator[];
+    liveUpdates?: boolean;
   } = {},
 ) {
   const fake = createFakeFlexom(settings, actuators);
@@ -107,6 +109,7 @@ async function setup(
     zone,
     flexom: fake.flexom,
     tolerance: 0.05,
+    liveUpdates,
     data: await loadZoneData({ flexom: fake.flexom, zone }),
   });
   // Let the initial (debounced) state fetch settle
@@ -184,6 +187,28 @@ describe('createFlexomZone', () => {
       expect(characteristic(service, TargetPosition).value).toBe(80);
       expect(infoLines()).toContain(
         'Window covering corrected from 20% to 80% (missed event)',
+      );
+    });
+
+    it('logs changes at debug without live updates', async () => {
+      const { flexomZone, setApiState, characteristic, infoLines, logger } =
+        await setup(
+          { BRI: { value: 1 }, BRIEXT: { value: 0.2 } },
+          { liveUpdates: false },
+        );
+      const before = infoLines().length;
+
+      setApiState({ BRI: { value: 0 }, BRIEXT: { value: 0.8 } });
+      await flexomZone.refresh();
+
+      const on = characteristic(hap.Service.Lightbulb, hap.Characteristic.On);
+      expect(on.value).toBe(false);
+      expect(infoLines()).toHaveLength(before);
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Light changed from on to off (state synchronization)',
+      );
+      expect(logger.debug).toHaveBeenCalledWith(
+        'Window covering changed from 20% to 80% (state synchronization)',
       );
     });
 

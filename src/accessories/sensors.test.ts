@@ -187,7 +187,12 @@ async function setup(
   {
     cached = [],
     state = 'OK',
-  }: { cached?: PlatformAccessory[]; state?: string } = {},
+    liveUpdates,
+  }: {
+    cached?: PlatformAccessory[];
+    state?: string;
+    liveUpdates?: boolean;
+  } = {},
 ) {
   const fake = createFakeFlexom(sensors, state);
   const logger = createTestLogger();
@@ -203,6 +208,7 @@ async function setup(
     logger,
     zone,
     flexom: fake.flexom,
+    liveUpdates,
     devices: await loadDeviceStates({
       flexom: fake.flexom,
       devices: toSensorDevices(sensors),
@@ -428,6 +434,22 @@ describe('createZoneSensors', () => {
     );
     expect(logger.info).toHaveBeenCalledWith(
       'Corridor Smoke Detector corrected: temperature 23 -> 24.5, smoke false -> true (missed event)',
+    );
+  });
+
+  it('logs refreshed readings at debug without live updates', async () => {
+    const { zoneSensors, setApiSensors, logger } = await setup(
+      detectorSensors(),
+      { liveUpdates: false },
+    );
+    logger.info.mockClear(); // startup lines are fine
+
+    setApiSensors(detectorSensors({ temperature: '24.5' }));
+    await zoneSensors!.refresh();
+
+    expect(logger.info).not.toHaveBeenCalled();
+    expect(logger.debug).toHaveBeenCalledWith(
+      'Corridor Smoke Detector changed: temperature 23 -> 24.5 (state synchronization)',
     );
   });
 

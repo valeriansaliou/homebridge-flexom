@@ -147,6 +147,7 @@ export function createFlexomPlatform({
       logger,
       zone,
       flexom: client,
+      liveUpdates: config.liveUpdates !== false,
       devices: data.sensorDevices,
     });
 

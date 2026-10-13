@@ -417,6 +417,18 @@ export async function createFlexomZone({
 
   const capitalize = (label: string) =>
     label.charAt(0).toUpperCase() + label.slice(1);
+  // Without live updates, refreshes are how changes get reported
+  const logCorrection = (label: string, from: string, to: string) => {
+    if (liveUpdates) {
+      logger.info(
+        `${capitalize(label)} corrected from ${from} to ${to} (missed event)`,
+      );
+    } else {
+      logger.debug(
+        `${capitalize(label)} changed from ${from} to ${to} (state synchronization)`,
+      );
+    }
+  };
 
   const applyLight = (
     { label, lightBulb, isCommandSettling }: (typeof lightBulbs)[number],
@@ -434,9 +446,7 @@ export async function createFlexomZone({
     }
     const corrected = isRefresh && wasOn !== isOn;
     if (corrected) {
-      logger.info(
-        `${capitalize(label)} corrected from ${onOff(wasOn)} to ${onOff(isOn)} (missed event)`,
-      );
+      logCorrection(label, onOff(wasOn), onOff(isOn));
     }
     lightBulb.lightOnService.setInternalValue(isOn);
     return { comparison, corrected };
@@ -457,9 +467,7 @@ export async function createFlexomZone({
     const corrected =
       source === 'refresh' && !wasMoving && current !== previous;
     if (corrected) {
-      logger.info(
-        `${capitalize(label)} corrected from ${previous}% to ${current}% (missed event)`,
-      );
+      logCorrection(label, `${previous}%`, `${current}%`);
     }
     return { comparison, corrected };
   };

@@ -126,6 +126,7 @@ export async function createZoneSensors({
   devices,
   flexom,
   zone,
+  liveUpdates = true,
   logger: parentLogger,
 }: {
   api: API;
@@ -135,6 +136,8 @@ export async function createZoneSensors({
   flexom: Flexom.FlexomClient;
   zone: Flexom.Zone;
   logger: Logger;
+  /** Whether WebSocket events report changes, or only refreshes do */
+  liveUpdates?: boolean;
 }): Promise<ZoneSensors | undefined> {
   if (devices.length === 0) return undefined;
   const logger = createChildLogger({ parentLogger, prefix: zone.name });
@@ -214,13 +217,17 @@ export async function createZoneSensors({
       (key) => before[key] !== after[key],
     );
     if (corrected.length) {
-      logger.info(
-        `${setup.name} corrected: ${corrected
-          .map(
-            (key) => `${key} ${String(before[key])} -> ${String(after[key])}`,
-          )
-          .join(', ')} (missed event)`,
-      );
+      const changes = corrected
+        .map((key) => `${key} ${String(before[key])} -> ${String(after[key])}`)
+        .join(', ');
+      // Without live updates, refreshes are how changes get reported
+      if (liveUpdates) {
+        logger.info(`${setup.name} corrected: ${changes} (missed event)`);
+      } else {
+        logger.debug(
+          `${setup.name} changed: ${changes} (state synchronization)`,
+        );
+      }
     }
   };
 
