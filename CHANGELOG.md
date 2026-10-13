@@ -1,5 +1,13 @@
 # Changelog
 
+## 4.2.1 (2026-10-13)
+
+### Changed
+
+- With `liveUpdates` disabled, changes picked up by the periodic refresh are
+  logged at debug level as a state synchronization, instead of at info level
+  as a missed event.
+
 ## 4.2.0 (2026-10-12)
 
 ### Added
